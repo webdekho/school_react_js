@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Print Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .receipt-content {
+            background: white;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .receipt-content {
+                max-width: none;
+                margin: 0;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="no-print mb-4 text-center">
+            <h2>Receipt Print Test</h2>
+            <button onclick="window.print()" class="btn btn-primary me-2">
+                <i class="bi bi-printer me-2"></i>Print Receipt
+            </button>
+            <button onclick="printInNewWindow()" class="btn btn-outline-primary">
+                <i class="bi bi-printer-fill me-2"></i>Print in New Window
+            </button>
+        </div>
+
+        <div class="receipt-content" id="receipt-content">
+            <!-- School Header -->
+            <div class="text-center border-bottom pb-4 mb-4" style="background-color: #f8f9fa; padding: 2rem;">
+                <div class="mb-3">
+                    <i class="bi bi-mortarboard display-4 text-primary"></i>
+                </div>
+                <h3 class="mb-1 text-primary">School Management System</h3>
+                <p class="text-muted mb-2">Excellence in Education</p>
+                <small class="text-muted">
+                    123 Education Street, Knowledge City, State - 123456<br />
+                    Phone: +91 98765 43210 | Email: info@school.edu
+                </small>
+            </div>
+
+            <div class="px-4 pb-4">
+                <!-- Receipt Header -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h4 class="mb-1 text-success">
+                            <i class="bi bi-receipt me-2"></i>
+                            FEE RECEIPT
+                        </h4>
+                        <p class="text-muted mb-0">Original Copy</p>
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-bold fs-5 text-primary">#RCP202508098312</div>
+                        <small class="text-muted">
+                            09 August 2025 at 03:49 PM
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Student Information -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="bi bi-person-fill me-2"></i>
+                            Student Information
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <strong>Name:</strong> Vedant Desai
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Roll Number:</strong> C4A003
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <strong>Class:</strong> Class 4 A
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Parent Mobile:</strong> 9876543220
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Details -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0 text-white">
+                            <i class="bi bi-currency-rupee me-2"></i>
+                            Payment Details
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <strong>Fee Category:</strong> Bag
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Payment Method:</strong> 
+                                    <span class="ms-2">
+                                        <i class="bi bi-cash me-1"></i>
+                                        CASH
+                                    </span>
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Remarks:</strong> Success test
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="bg-light p-3 rounded text-end">
+                                    <div class="mb-2">
+                                        <strong>Amount Paid</strong>
+                                    </div>
+                                    <div class="display-6 text-success fw-bold">
+                                        ₹800.00
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collection Information -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="bi bi-person-badge me-2"></i>
+                            Collection Information
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-2">
+                                    <strong>Collected By:</strong> System Administrator
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Collection Date:</strong> 09 August 2025
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-2">
+                                    <strong>Status:</strong> 
+                                    <span class="badge bg-success ms-2">
+                                        Verified
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="text-center pt-4 border-top">
+                    <p class="text-muted mb-2">
+                        <strong>Important:</strong> This is a computer-generated receipt and does not require a signature.
+                    </p>
+                    <p class="text-muted mb-1">
+                        Keep this receipt safe for your records. For any queries, contact the school office.
+                    </p>
+                    <small class="text-muted">
+                        Generated on 09/08/2025, 15:49:13 | School Management System v1.0
+                    </small>
+                </div>
+
+                <!-- QR Code placeholder -->
+                <div class="text-center mt-4">
+                    <div style="
+                        width: 100px; 
+                        height: 100px; 
+                        border: 2px dashed #dee2e6; 
+                        margin: 0 auto;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        border-radius: 8px;
+                    ">
+                        <small class="text-muted">QR Code</small>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Scan for verification</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function printInNewWindow() {
+            const receiptContent = document.getElementById('receipt-content').innerHTML;
+            const printWindow = window.open('', '_blank');
+            
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Receipt RCP202508098312</title>
+                    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+                    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                        @media print {
+                            body { margin: 0; padding: 0; }
+                            .no-print { display: none !important; }
+                        }
+                        .receipt-content { background: white; }
+                    </style>
+                </head>
+                <body>
+                    <div class="receipt-content">${receiptContent}</div>
+                    <script>
+                        window.onload = function() {
+                            window.print();
+                            window.onafterprint = function() {
+                                window.close();
+                            };
+                        };
+                    </script>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
+    </script>
+</body>
+</html>

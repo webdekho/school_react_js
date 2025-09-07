@@ -1,0 +1,600 @@
+/* Global Styles */
+.App {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  transition: all 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 80px;
+}
+
+.sidebar .nav-link {
+  transition: all 0.2s ease;
+}
+
+.sidebar .nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.collapsed-sidebar .nav-link {
+  justify-content: center;
+}
+
+/* Main Content Styles */
+.main-content {
+  margin-left: 250px;
+  transition: margin-left 0.3s ease;
+}
+
+.main-content.sidebar-collapsed {
+  margin-left: 80px;
+}
+
+/* Card Styles */
+.card {
+  transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Button Styles */
+.btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+/* Form Styles */
+.form-control, .form-select {
+  border-radius: 8px;
+  border: 2px solid #e9ecef;
+  transition: border-color 0.2s ease;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+/* Custom Utilities */
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Loading Spinner */
+.spinner-border-primary {
+  color: #667eea;
+}
+
+/* Toast Notifications */
+.toast {
+  border-radius: 8px;
+}
+
+/* Dashboard Stats Cards */
+.stats-card {
+  border: none;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Responsive Design */
+/* Tablets and below */
+@media (max-width: 991px) {
+  .main-content {
+    margin-left: 0 !important;
+    padding-top: 56px;
+  }
+  
+  .main-content.sidebar-collapsed {
+    margin-left: 0 !important;
+  }
+  
+  .sidebar {
+    transform: translateX(-100%);
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  }
+  
+  .sidebar.show {
+    transform: translateX(0);
+  }
+  
+  /* Adjust navbar for mobile */
+  .navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 999;
+  }
+  
+  /* Container padding adjustments */
+  .container-fluid {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  
+  /* Card responsive styles */
+  .card {
+    margin-bottom: 1rem;
+  }
+  
+  .stats-card {
+    margin-bottom: 1rem;
+  }
+  
+  /* Table responsive wrapper */
+  .table-responsive {
+    margin: 0 -1rem;
+    padding: 0 1rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Button group responsive */
+  .btn-group {
+    flex-wrap: wrap;
+  }
+  
+  .btn-group .btn {
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* Mobile devices */
+@media (max-width: 576px) {
+  /* Typography adjustments */
+  h1 { font-size: 1.75rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.25rem; }
+  h4 { font-size: 1.1rem; }
+  h5 { font-size: 1rem; }
+  h6 { font-size: 0.9rem; }
+  
+  /* Form controls */
+  .form-control, .form-select {
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+  
+  /* Modal adjustments */
+  .modal-dialog {
+    margin: 0.5rem;
+  }
+  
+  .modal-fullscreen-sm-down {
+    width: 100vw;
+    max-width: none;
+    height: 100%;
+    margin: 0;
+  }
+  
+  /* Table font size */
+  .table {
+    font-size: 0.875rem;
+  }
+  
+  .table td, .table th {
+    padding: 0.5rem;
+  }
+  
+  /* Button sizes */
+  .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+  }
+  
+  /* Badge adjustments */
+  .badge {
+    font-size: 0.7rem;
+  }
+  
+  /* Pagination */
+  .pagination {
+    font-size: 0.875rem;
+  }
+  
+  .page-link {
+    padding: 0.25rem 0.5rem;
+  }
+  
+  /* Dropdown adjustments */
+  .dropdown-menu {
+    font-size: 0.875rem;
+  }
+  
+  /* Search input */
+  .search-input {
+    font-size: 0.875rem;
+  }
+  
+  /* Stats cards stacking */
+  .row > [class*="col-"] {
+    margin-bottom: 1rem;
+  }
+  
+  /* Sidebar overlay on mobile */
+  .sidebar.show ~ .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 375px) {
+  /* Further size reductions */
+  body {
+    font-size: 0.875rem;
+  }
+  
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  h3 { font-size: 1.1rem; }
+  
+  .btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8rem;
+  }
+  
+  .table {
+    font-size: 0.8rem;
+  }
+  
+  /* Reduce padding on containers */
+  .container-fluid {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+  
+  .card {
+    border-radius: 0.5rem;
+  }
+  
+  .card-body {
+    padding: 1rem;
+  }
+}
+
+/* Landscape orientation adjustments */
+@media (max-width: 991px) and (orientation: landscape) {
+  .navbar {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  
+  .main-content {
+    padding-top: 48px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .sidebar, .navbar, .btn-print, .no-print {
+    display: none !important;
+  }
+  
+  .main-content {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+  }
+  
+  .card {
+    border: 1px solid #dee2e6 !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Animation Classes */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* React Bootstrap Typeahead Dropdown Fix */
+.rbt-menu {
+  z-index: 9999 !important;
+  position: fixed !important;
+}
+
+.rbt-menu-wrapper {
+  z-index: 9999 !important;
+  position: relative !important;
+}
+
+.rbt .dropdown-menu {
+  z-index: 9999 !important;
+}
+
+/* Ensure typeahead container maintains proper stacking context */
+.rbt {
+  position: relative !important;
+  z-index: auto !important;
+}
+
+.rbt.open {
+  z-index: 9998 !important;
+}
+
+/* Ensure cards don't clip dropdowns */
+.card {
+  overflow: visible !important;
+  position: relative;
+  z-index: 1;
+}
+
+.card-body {
+  overflow: visible !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* Fix hover issues with card transitions */
+.card:hover {
+  z-index: 2 !important;
+}
+
+/* Ensure table doesn't interfere with dropdowns */
+.table-responsive {
+  overflow: visible !important;
+}
+
+table {
+  position: relative;
+  z-index: 1;
+}
+
+/* Fix for typeahead in modals */
+.modal .rbt-menu {
+  z-index: 10500 !important;
+}
+
+/* Fix duplicate clear buttons in typeahead */
+.rbt-aux {
+  display: none !important;
+}
+
+.rbt-close {
+  font-size: 14px !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  width: 18px !important;
+  height: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.rbt-close:hover {
+  opacity: 0.8;
+}
+
+/* Hide token close buttons */
+.rbt-token .rbt-close {
+  display: none !important;
+}
+
+/* Ensure single selection mode doesn't show tokens */
+.rbt-input-wrapper .rbt-token {
+  display: none !important;
+}
+
+/* Clean up clear button positioning */
+.rbt-input-wrapper {
+  position: relative !important;
+}
+
+.rbt-input-wrapper .rbt-close {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+/* Specific fixes for filter dropdowns */
+.typeahead-filter {
+  position: static !important;
+}
+
+.typeahead-filter .rbt-menu {
+  position: fixed !important;
+  z-index: 99999 !important;
+}
+
+/* Ensure dropdowns stay on top during interactions */
+.rbt-input-wrapper:focus-within + .rbt-menu-wrapper .rbt-menu,
+.rbt-input-wrapper:hover + .rbt-menu-wrapper .rbt-menu {
+  z-index: 99999 !important;
+}
+
+/* Prevent transform on parent elements from affecting dropdown positioning */
+.card:has(.rbt.open) {
+  transform: none !important;
+}
+
+/* Additional safety for dropdown visibility */
+.rbt-menu-wrapper {
+  pointer-events: none;
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+.rbt-menu {
+  pointer-events: auto;
+}
+
+/* Responsive utility classes */
+.text-truncate-mobile {
+  @media (max-width: 576px) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.hide-mobile {
+  @media (max-width: 576px) {
+    display: none !important;
+  }
+}
+
+.show-mobile {
+  @media (min-width: 577px) {
+    display: none !important;
+  }
+}
+
+/* Responsive spacing utilities */
+@media (max-width: 576px) {
+  .mt-mobile-3 { margin-top: 1rem !important; }
+  .mb-mobile-3 { margin-bottom: 1rem !important; }
+  .my-mobile-3 { 
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+  }
+  .pt-mobile-3 { padding-top: 1rem !important; }
+  .pb-mobile-3 { padding-bottom: 1rem !important; }
+  .py-mobile-3 { 
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+}
+
+/* Responsive flexbox utilities */
+@media (max-width: 576px) {
+  .flex-mobile-column {
+    flex-direction: column !important;
+  }
+  
+  .flex-mobile-wrap {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 991px) {
+  .row-cols-lg-auto > * {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 576px) {
+  .row-cols-sm-auto > * {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+/* Touch-friendly adjustments */
+@media (hover: none) and (pointer: coarse) {
+  /* Increase touch targets */
+  .btn, .nav-link, .dropdown-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  
+  /* Remove hover effects on touch devices */
+  .card:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  
+  .stats-card:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* Scrollbar styles for mobile */
+@media (max-width: 991px) {
+  .table-responsive::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  .table-responsive::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+  }
+  
+  .table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+}
+
+/* Sidebar overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.show {
+  display: block;
+}

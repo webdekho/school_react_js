@@ -1,0 +1,25 @@
+-- Create support_tickets table for help and support functionality
+CREATE TABLE IF NOT EXISTS `support_tickets` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL COMMENT 'ID of user who created the ticket',
+  `user_name` varchar(255) NOT NULL COMMENT 'Name of user who created the ticket',
+  `user_email` varchar(255) NOT NULL COMMENT 'Email of user who created the ticket',
+  `subject` varchar(255) NOT NULL COMMENT 'Ticket subject',
+  `category` enum('general','technical','billing','feature','bug') DEFAULT 'general' COMMENT 'Ticket category',
+  `priority` enum('low','medium','high','critical') DEFAULT 'medium' COMMENT 'Ticket priority',
+  `message` text NOT NULL COMMENT 'Ticket message/description',
+  `status` enum('open','in_progress','resolved','closed') DEFAULT 'open' COMMENT 'Ticket status',
+  `assigned_to` int(11) NULL COMMENT 'Support staff assigned to ticket',
+  `response` text NULL COMMENT 'Support response',
+  `response_date` timestamp NULL COMMENT 'Date of response',
+  `resolved_date` timestamp NULL COMMENT 'Date ticket was resolved',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_priority` (`priority`),
+  KEY `idx_category` (`category`),
+  KEY `idx_assigned_to` (`assigned_to`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

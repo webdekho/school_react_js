@@ -1,0 +1,24 @@
+# Enable URL Rewriting
+RewriteEngine On
+
+# CORS headers are handled in PHP (index.php)
+
+# CORS preflight requests are handled in index.php
+
+# Remove index.php from URLs
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php/$1 [L]
+
+# Security headers
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options DENY
+Header always set X-XSS-Protection "1; mode=block"
+
+# Prevent access to system files
+RewriteCond %{REQUEST_URI} ^/system.*
+RewriteRule ^(.*)$ /index.php?/$1 [L]
+
+# Prevent access to application folder
+RewriteCond %{REQUEST_URI} ^/application.*
+RewriteRule ^(.*)$ /index.php?/$1 [L]

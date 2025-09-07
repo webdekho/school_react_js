@@ -1,0 +1,66 @@
+/* Windows-specific modal fixes */
+
+/* Ensure modal backdrop is properly removed when modal closes */
+.modal-backdrop.fade:not(.show) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.15s linear;
+}
+
+/* Prevent body scroll lock issues on Windows */
+body.modal-open {
+  overflow: hidden !important;
+  padding-right: 0 !important;
+}
+
+/* Fix for Windows where modal might leave invisible overlay */
+.modal:not(.show) {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Ensure proper z-index stacking */
+.modal-backdrop {
+  z-index: 1040 !important;
+}
+
+.modal {
+  z-index: 1050 !important;
+}
+
+/* Windows-specific animation optimizations */
+@media screen and (-ms-high-contrast: active), screen and (-ms-high-contrast: none) {
+  /* IE/Edge specific fixes */
+  .modal.fade .modal-dialog {
+    transition: transform 0.2s ease-out !important;
+  }
+  
+  .modal-backdrop.fade {
+    transition: opacity 0.1s linear !important;
+  }
+}
+
+/* Prevent double-click issues during modal transitions */
+.modal.fade.show {
+  pointer-events: auto !important;
+}
+
+.modal.fade:not(.show) {
+  pointer-events: none !important;
+}
+
+/* Fix for React Bootstrap modal cleanup */
+.modal-open .modal {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Ensure proper cleanup when modal is hidden */
+.modal[aria-hidden="true"] {
+  display: none !important;
+}
+
+/* Fix for stuck modal backdrops */
+body:not(.modal-open) .modal-backdrop {
+  display: none !important;
+}
