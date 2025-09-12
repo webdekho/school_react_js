@@ -159,4 +159,35 @@ class Parent_model extends CI_Model {
         $query = $this->db->get();
         return $query->result_array();
     }
+    
+    public function get_parents_by_staff_assignment($staff_id, $search = null, $limit = 50) {
+        $sql = "SELECT DISTINCT parents.id, parents.name, parents.mobile, parents.email
+                FROM parents 
+                JOIN students ON parents.id = students.parent_id
+                JOIN grades ON students.grade_id = grades.id
+                JOIN divisions ON students.division_id = divisions.id
+                WHERE parents.is_active = 1
+                AND students.is_active = 1
+                AND (
+                    students.grade_id IN (SELECT grade_id FROM staff_grades WHERE staff_id = ?)
+                    OR 
+                    students.division_id IN (SELECT division_id FROM staff_divisions WHERE staff_id = ?)
+                )";
+        
+        $params = [$staff_id, $staff_id];
+        
+        if ($search) {
+            $sql .= " AND (parents.name LIKE ? OR parents.mobile LIKE ? OR parents.email LIKE ?)";
+            $search_param = "%{$search}%";
+            $params[] = $search_param;
+            $params[] = $search_param;
+            $params[] = $search_param;
+        }
+        
+        $sql .= " ORDER BY parents.name ASC LIMIT ?";
+        $params[] = intval($limit);
+        
+        $query = $this->db->query($sql, $params);
+        return $query->result_array();
+    }
 }

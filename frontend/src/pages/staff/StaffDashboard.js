@@ -27,6 +27,11 @@ const StaffDashboard = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Students state
+  const [studentsCurrentPage, setStudentsCurrentPage] = useState(1);
+  const [studentsItemsPerPage, setStudentsItemsPerPage] = useState(15);
+  const [studentsSearchTerm, setStudentsSearchTerm] = useState('');
+  
   // Form data
   const [complaintForm, setComplaintForm] = useState({
     parent_id: '',
@@ -152,6 +157,47 @@ const StaffDashboard = () => {
   const wallet = walletResponse?.data || {};
   const transactions = ledgerResponse?.data?.data || [];
   const transactionTotal = ledgerResponse?.data?.total || 0;
+
+  // Fetch assigned students
+  const { data: studentsResponse, isLoading: studentsLoading } = useQuery({
+    queryKey: ['staff_students'],
+    queryFn: async () => {
+      try {
+        const response = await apiService.get('/api/staff/students');
+        return response.data;
+      } catch (error) {
+        if (error.response?.status === 403) {
+          toast.error('Insufficient permissions to view student data');
+        } else if (error.response?.data?.message) {
+          toast.error(error.response.data.message);
+        } else {
+          toast.error('Failed to load students. Please try again.');
+        }
+        throw error;
+      }
+    },
+    enabled: activeTab === 'students'
+  });
+
+  const allStudents = studentsResponse || [];
+  
+  // Filter students based on search term
+  const filteredStudents = allStudents.filter(student => {
+    if (!studentsSearchTerm) return true;
+    const searchLower = studentsSearchTerm.toLowerCase();
+    return (
+      student.student_name?.toLowerCase().includes(searchLower) ||
+      student.roll_number?.toLowerCase().includes(searchLower) ||
+      student.parent_name?.toLowerCase().includes(searchLower) ||
+      student.grade_name?.toLowerCase().includes(searchLower) ||
+      student.division_name?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Paginate filtered students
+  const totalStudents = filteredStudents.length;
+  const startIndex = (studentsCurrentPage - 1) * studentsItemsPerPage;
+  const paginatedStudents = filteredStudents.slice(startIndex, startIndex + studentsItemsPerPage);
 
   // Fetch students for selected parent
   const { data: parentStudentsResponse, error: studentsError } = useQuery({
@@ -575,6 +621,113 @@ const StaffDashboard = () => {
                   <h5>No Assigned Complaints</h5>
                   <p className="text-muted mb-4">
                     You don't have any complaints assigned to you yet.
+                  </p>
+                </div>
+              )}
+            </Card.Body>
+          </Card>
+        </Tab>
+
+        <Tab eventKey="students" title={
+          <span>
+            <i className="bi bi-people me-1"></i>
+            My Students
+          </span>
+        }>
+          <div className="d-flex justify-content-between align-items-center mb-4">
+            <div>
+              <h5 className="mb-0">Assigned Students</h5>
+              <small className="text-muted">{totalStudents} students assigned to your grades/divisions</small>
+            </div>
+          </div>
+
+          {/* Search */}
+          <Card className="border-0 shadow-sm mb-4">
+            <Card.Body>
+              <Row>
+                <Col md={6}>
+                  <InputGroup>
+                    <InputGroup.Text>
+                      <i className="bi bi-search"></i>
+                    </InputGroup.Text>
+                    <Form.Control
+                      type="text"
+                      placeholder="Search students by name, roll number, parent, grade, or division..."
+                      value={studentsSearchTerm}
+                      onChange={(e) => {
+                        setStudentsSearchTerm(e.target.value);
+                        setStudentsCurrentPage(1);
+                      }}
+                    />
+                  </InputGroup>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
+
+          <Card className="border-0 shadow-sm">
+            <Card.Body>
+              {studentsLoading ? (
+                <div className="text-center py-5">
+                  <Spinner animation="border" />
+                </div>
+              ) : paginatedStudents.length > 0 ? (
+                <>
+                  <Table responsive hover>
+                    <thead className="table-light">
+                      <tr>
+                        <th>Student Details</th>
+                        <th>Grade & Division</th>
+                        <th>Parent Details</th>
+                        <th>Roll Number</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedStudents.map((student) => (
+                        <tr key={student.id}>
+                          <td>
+                            <div className="fw-medium">{student.student_name}</div>
+                            <small className="text-muted">ID: {student.id}</small>
+                          </td>
+                          <td>
+                            <div>
+                              <Badge bg="primary" className="me-1">{student.grade_name}</Badge>
+                              <Badge bg="secondary">{student.division_name}</Badge>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="fw-medium">{student.parent_name}</div>
+                            <small className="text-muted">{student.parent_mobile}</small>
+                          </td>
+                          <td>
+                            <span className="badge bg-light text-dark">{student.roll_number}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+
+                  {totalStudents > studentsItemsPerPage && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={studentsCurrentPage}
+                        totalItems={totalStudents}
+                        itemsPerPage={studentsItemsPerPage}
+                        onPageChange={setStudentsCurrentPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setStudentsItemsPerPage(newSize);
+                          setStudentsCurrentPage(1);
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-5">
+                  <i className="bi bi-people display-1 text-muted mb-4"></i>
+                  <h5>No Students Assigned</h5>
+                  <p className="text-muted mb-4">
+                    {studentsSearchTerm ? 'No students match your search criteria.' : 'You don\'t have any students assigned to your grades or divisions yet.'}
                   </p>
                 </div>
               )}

@@ -110,8 +110,8 @@ class Fee_structure_model extends CI_Model {
             $data['semester'] = null; // NULL means applies to both semesters
         }
         
-        // Check for duplicate structure
-        if ($this->check_duplicate($data['academic_year_id'], $data['grade_id'], $data['division_id'], $data['fee_category_id'])) {
+        // Check for duplicate structure (division_id is always null now)
+        if ($this->check_duplicate($data['academic_year_id'], $data['grade_id'], null, $data['fee_category_id'])) {
             $this->db->trans_rollback();
             return ['error' => 'A fee structure already exists for this combination'];
         }
@@ -208,10 +208,7 @@ class Fee_structure_model extends CI_Model {
             $this->db->where('s.grade_id', $structure['grade_id']);
         }
         
-        // Filter by division if specified
-        if ($structure['division_id']) {
-            $this->db->where('s.division_id', $structure['division_id']);
-        }
+        // Division filtering removed - fee structures now apply to entire grade
         
         $students = $this->db->get()->result_array();
         
@@ -358,11 +355,8 @@ class Fee_structure_model extends CI_Model {
             $this->db->where('grade_id IS NULL');
         }
         
-        if ($division_id) {
-            $this->db->where('division_id', $division_id);
-        } else {
-            $this->db->where('division_id IS NULL');
-        }
+        // Division is always NULL for grade-only fee structures
+        $this->db->where('division_id IS NULL');
         
         if ($exclude_id) {
             $this->db->where('id !=', $exclude_id);
@@ -386,12 +380,8 @@ class Fee_structure_model extends CI_Model {
             $this->db->where('grade_id IS NULL');
         }
         
-        // Check for division-specific or grade-wide fees
-        if ($division_id) {
-            $this->db->where('division_id', $division_id);
-        } else {
-            $this->db->where('division_id IS NULL');
-        }
+        // Division is always NULL for grade-only fee structures
+        $this->db->where('division_id IS NULL');
         
         $query = $this->db->get('fee_structures');
         return $query->num_rows() > 0;

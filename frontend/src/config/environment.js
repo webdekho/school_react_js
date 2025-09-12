@@ -1,7 +1,7 @@
 // Environment configuration utility
 const config = {
   development: {
-    API_BASE_URL: 'https://ttss.webdekho.in/apis/',
+    API_BASE_URL: 'http://localhost/School/backend/',
     DEBUG: true,
     ENVIRONMENT: 'development'
   },

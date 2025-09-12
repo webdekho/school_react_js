@@ -15,7 +15,6 @@ const FeeStructuresManagement = () => {
   const [formData, setFormData] = useState({
     fee_category_id: '',
     grade_id: '',
-    division_id: '',
     amount: '',
     is_mandatory: false,
     due_date: '',
@@ -27,7 +26,6 @@ const FeeStructuresManagement = () => {
   });
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [selectedGrades, setSelectedGrades] = useState([]);
-  const [selectedDivisions, setSelectedDivisions] = useState([]);
   const [errors, setErrors] = useState({});
 
   // Pagination and search states
@@ -145,17 +143,7 @@ const FeeStructuresManagement = () => {
     }
   });
 
-  // Fetch divisions for dropdown (when grade is selected)
-  const { data: divisionsData } = useQuery({
-    queryKey: ['divisions_dropdown', formData.grade_id],
-    queryFn: async () => {
-      if (!formData.grade_id) return { data: [] };
-      const response = await apiService.get(`/api/admin/divisions?grade_id=${formData.grade_id}&limit=100&offset=0`);
-      console.log('Divisions API response:', response, 'for grade_id:', formData.grade_id);
-      return response.data;
-    },
-    enabled: !!formData.grade_id
-  });
+  // Remove divisions query - no longer needed
 
   // Update selected grades when data becomes available
   useEffect(() => {
@@ -167,15 +155,7 @@ const FeeStructuresManagement = () => {
     }
   }, [gradesData, editingStructure, formData.grade_id, selectedGrades.length]);
 
-  // Update selected divisions when data becomes available  
-  useEffect(() => {
-    if (editingStructure && divisionsData?.data && formData.division_id && selectedDivisions.length === 0) {
-      const division = divisionsData.data.find(d => d.id == formData.division_id);
-      if (division) {
-        setSelectedDivisions([division]);
-      }
-    }
-  }, [divisionsData, editingStructure, formData.division_id, selectedDivisions.length]);
+  // Remove divisions useEffect - no longer needed
 
   // Fetch fee structures with pagination
   const { data: structuresResponse, isLoading, error } = useQuery({
@@ -300,7 +280,6 @@ const FeeStructuresManagement = () => {
       setFormData({
         fee_category_id: structure.fee_category_id || '',
         grade_id: structure.grade_id || '',
-        division_id: structure.division_id || '',
         amount: structure.amount || '',
         is_mandatory: isMandatory,
         due_date: structure.due_date || '',
@@ -314,7 +293,6 @@ const FeeStructuresManagement = () => {
       // Reset selections first
       setSelectedCategories([]);
       setSelectedGrades([]);
-      setSelectedDivisions([]);
       
       // Set selected category for typeahead (will be set by useEffect if data is not loaded yet)
       if (structure.fee_category_id && categoriesData?.data) {
@@ -332,19 +310,12 @@ const FeeStructuresManagement = () => {
         }
       }
       
-      // Set selected division for typeahead (will be set by useEffect if data is not loaded yet)
-      if (structure.division_id && divisionsData?.data) {
-        const division = divisionsData.data.find(d => d.id == structure.division_id);
-        if (division) {
-          setSelectedDivisions([division]);
-        }
-      }
+      // Remove division selection logic - no longer needed
     } else {
       setEditingStructure(null);
       setFormData({
         fee_category_id: '',
         grade_id: '',
-        division_id: '',
         amount: '',
         is_mandatory: false,
         due_date: '',
@@ -356,7 +327,6 @@ const FeeStructuresManagement = () => {
       });
       setSelectedCategories([]);
       setSelectedGrades([]);
-      setSelectedDivisions([]);
     }
     setErrors({});
     setShowModal(true);
@@ -368,7 +338,6 @@ const FeeStructuresManagement = () => {
     setFormData({
       fee_category_id: '',
       grade_id: '',
-      division_id: '',
       amount: '',
       due_date: '',
       late_fee_amount: '',
@@ -379,7 +348,6 @@ const FeeStructuresManagement = () => {
     });
     setSelectedCategories([]);
     setSelectedGrades([]);
-    setSelectedDivisions([]);
     setErrors({});
   };
 
@@ -393,11 +361,7 @@ const FeeStructuresManagement = () => {
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
-    
-    // Clear division when grade changes
-    if (name === 'grade_id') {
-      setFormData(prev => ({ ...prev, division_id: '' }));
-    }
+    // Remove division clearing logic - no longer needed
     
     // Clear item-specific fields when category changes
     if (name === 'fee_category_id') {
@@ -427,24 +391,10 @@ const FeeStructuresManagement = () => {
   const handleGradeChange = (selected) => {
     setSelectedGrades(selected);
     const gradeId = selected.length > 0 ? selected[0].id : '';
-    setFormData(prev => ({ ...prev, grade_id: gradeId, division_id: '' }));
-    
-    // Clear division selection when grade changes
-    setSelectedDivisions([]);
+    setFormData(prev => ({ ...prev, grade_id: gradeId }));
     
     if (errors.grade_id) {
       setErrors(prev => ({ ...prev, grade_id: '' }));
-    }
-  };
-
-  // Handle division selection
-  const handleDivisionChange = (selected) => {
-    setSelectedDivisions(selected);
-    const divisionId = selected.length > 0 ? selected[0].id : '';
-    setFormData(prev => ({ ...prev, division_id: divisionId }));
-    
-    if (errors.division_id) {
-      setErrors(prev => ({ ...prev, division_id: '' }));
     }
   };
 
@@ -498,9 +448,6 @@ const FeeStructuresManagement = () => {
     if (!formData.grade_id) {
       newErrors.grade_id = 'Grade is required';
     }
-    if (!formData.division_id) {
-      newErrors.division_id = 'Division is required';
-    }
     if (!formData.amount || formData.amount <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
     }
@@ -528,11 +475,12 @@ const FeeStructuresManagement = () => {
       ...formData,
       academic_year_id: selectedAcademicYear.id,
       is_mandatory: formData.is_mandatory ? 1 : 0,
-      // grade_id and division_id are now mandatory - keep their values as is
+      // grade_id is now mandatory - keep its value as is
       // Convert empty strings to null only for optional fields
       late_fee_amount: formData.late_fee_amount || null,
       late_fee_days: formData.late_fee_days || null,
-      semester: formData.semester || null  // Include semester field
+      semester: formData.semester || null,  // Include semester field
+      division_id: null  // Always set division_id to null since we're removing it
     };
     
     
@@ -632,7 +580,7 @@ const FeeStructuresManagement = () => {
                 <Form.Control
                   ref={searchInputRef}
                   type="text"
-                  placeholder="Search by category, grade, or division..."
+                  placeholder="Search by category or grade..."
                   value={searchTerm}
                   onChange={handleSearch}
                 />
@@ -680,7 +628,7 @@ const FeeStructuresManagement = () => {
               <thead className="table-light">
                 <tr>
                   <th>Category</th>
-                  <th>Grade/Division</th>
+                  <th>Grade</th>
                   <th>Amount</th>
                   <th>Mandatory (Yes/No)</th>
                   <th>Due Date</th>
@@ -706,12 +654,7 @@ const FeeStructuresManagement = () => {
                     <td>
                       <div>
                         {structure.grade_name ? (
-                          <>
-                            <div className="fw-medium">{structure.grade_name}</div>
-                            {structure.division_name && (
-                              <small className="text-muted">{structure.division_name}</small>
-                            )}
-                          </>
+                          <div className="fw-medium">{structure.grade_name}</div>
                         ) : (
                           <span className="text-muted fst-italic">All Grades</span>
                         )}
@@ -951,46 +894,7 @@ const FeeStructuresManagement = () => {
                   </Form.Group>
                 </div>
 
-                <div className="col-md-6 mb-3">
-                  <Form.Group>
-                    <Form.Label className="text-muted mb-2">
-                      <i className="bi bi-diagram-3 me-2"></i>Division *
-                    </Form.Label>
-                    <Typeahead
-                      id="division-typeahead"
-                      labelKey="name"
-                      options={divisionsData?.data || []}
-                      placeholder={!formData.grade_id ? 'Select a grade first...' : 
-                                 divisionsData ? 'Search and select a division...' : 'Loading divisions...'}
-                      selected={selectedDivisions}
-                      onChange={handleDivisionChange}
-                      disabled={!formData.grade_id || !divisionsData?.data?.length}
-                      className={errors.division_id ? 'is-invalid' : ''}
-                      emptyLabel={!formData.grade_id ? 'Select a grade first' : 
-                                divisionsData?.data?.length === 0 ? 'No divisions available for this grade' : 'No matches found'}
-                      filterBy={['name']}
-                      highlightOnlyResult
-                      selectHintOnEnter
-                      clearButton
-                      renderMenuItemChildren={(option) => (
-                        <div>
-                          <strong>{option.name}</strong>
-                          {option.description && (
-                            <div><small className="text-muted">{option.description}</small></div>
-                          )}
-                        </div>
-                      )}
-                    />
-                    {errors.division_id && (
-                      <div className="invalid-feedback d-block">
-                        {errors.division_id}
-                      </div>
-                    )}
-                    <Form.Text className="text-muted">
-                      Select the specific division for this fee structure
-                    </Form.Text>
-                  </Form.Group>
-                </div>
+                {/* Division field removed - fee structures now apply to entire grade */}
 
                 <div className="col-md-6 mb-3">
                   <div className="d-flex align-items-center h-100">

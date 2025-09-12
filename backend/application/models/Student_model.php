@@ -307,6 +307,36 @@ class Student_model extends CI_Model {
         return $query->result_array();
     }
     
+    public function get_students_by_staff_assignment($staff_id, $parent_id = null) {
+        $sql = "SELECT DISTINCT students.*, 
+                       grades.name as grade_name, 
+                       divisions.name as division_name, 
+                       parents.name as parent_name, 
+                       parents.mobile as parent_mobile,
+                       students.student_name,
+                       students.roll_number
+                FROM students 
+                JOIN grades ON students.grade_id = grades.id
+                JOIN divisions ON students.division_id = divisions.id
+                JOIN parents ON students.parent_id = parents.id
+                WHERE students.is_active = 1
+                AND parents.is_active = 1";
+        
+        if ($parent_id) {
+            $sql .= " AND students.parent_id = " . intval($parent_id);
+        }
+        
+        $sql .= " AND (
+                    students.grade_id IN (SELECT grade_id FROM staff_grades WHERE staff_id = ?)
+                    OR 
+                    students.division_id IN (SELECT division_id FROM staff_divisions WHERE staff_id = ?)
+                  )
+                  ORDER BY grades.name, divisions.name, students.student_name";
+        
+        $query = $this->db->query($sql, [$staff_id, $staff_id]);
+        return $query->result_array();
+    }
+    
     public function bulk_import_students($students_data) {
         $success_count = 0;
         $errors = [];

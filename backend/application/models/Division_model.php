@@ -80,6 +80,16 @@ class Division_model extends CI_Model {
         $data['created_at'] = date('Y-m-d H:i:s');
         $data['updated_at'] = date('Y-m-d H:i:s');
         
+        // Check if division already exists for this grade
+        $this->db->where('grade_id', $data['grade_id']);
+        $this->db->where('name', $data['name']);
+        $this->db->where('is_active', 1);
+        $existing = $this->db->get('divisions')->row();
+        
+        if ($existing) {
+            return ['error' => 'Division already exist in selected grade'];
+        }
+        
         if ($this->db->insert('divisions', $data)) {
             return $this->db->insert_id();
         }

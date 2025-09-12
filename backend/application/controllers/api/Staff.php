@@ -348,7 +348,7 @@ class Staff extends API_Controller {
     }
     
     /**
-     * Get parents list for complaint creation
+     * Get parents list for complaint creation (filtered by staff assignments)
      * GET /api/staff/parents
      */
     public function parents() {
@@ -360,8 +360,9 @@ class Staff extends API_Controller {
         try {
             $search = $this->input->get('search');
             $limit = $this->input->get('limit') ?: 50;
+            $staff_id = $this->user['id'];
             
-            $parents = $this->Parent_model->get_parents_dropdown($search, $limit);
+            $parents = $this->Parent_model->get_parents_by_staff_assignment($staff_id, $search, $limit);
             
             $this->send_response($parents, 'Parents retrieved successfully');
             
@@ -372,7 +373,7 @@ class Staff extends API_Controller {
     }
     
     /**
-     * Get students for selected parent
+     * Get students for selected parent (filtered by staff assignments)
      * GET /api/staff/parent/{parent_id}/students
      */
     public function parent_students($parent_id) {
@@ -382,12 +383,35 @@ class Staff extends API_Controller {
         }
         
         try {
-            $students = $this->Student_model->get_students_by_parent($parent_id);
+            $staff_id = $this->user['id'];
+            $students = $this->Student_model->get_students_by_staff_assignment($staff_id, $parent_id);
             
             $this->send_response($students, 'Students retrieved successfully');
             
         } catch (Exception $e) {
             log_message('error', 'Staff get parent students error: ' . $e->getMessage());
+            $this->send_error('Failed to retrieve students', 500);
+        }
+    }
+    
+    /**
+     * Get all students assigned to the staff member
+     * GET /api/staff/students
+     */
+    public function students() {
+        if ($this->input->method() !== 'get') {
+            $this->send_error('Method not allowed', 405);
+            return;
+        }
+        
+        try {
+            $staff_id = $this->user['id'];
+            $students = $this->Student_model->get_students_by_staff_assignment($staff_id);
+            
+            $this->send_response($students, 'Assigned students retrieved successfully');
+            
+        } catch (Exception $e) {
+            log_message('error', 'Staff get students error: ' . $e->getMessage());
             $this->send_error('Failed to retrieve students', 500);
         }
     }

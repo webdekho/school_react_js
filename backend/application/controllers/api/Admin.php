@@ -568,10 +568,14 @@ class Admin extends API_Controller {
                 
                 if (!$input) return;
                 
-                $division_id = $this->Division_model->create_division($input);
-                if ($division_id) {
-                    $this->log_activity('division_created', 'divisions', $division_id, null, $input);
-                    $this->send_response(['id' => $division_id], 'Division created successfully', 201);
+                $result = $this->Division_model->create_division($input);
+                
+                // Check if result is an error array
+                if (is_array($result) && isset($result['error'])) {
+                    $this->send_error($result['error'], 400);
+                } elseif ($result) {
+                    $this->log_activity('division_created', 'divisions', $result, null, $input);
+                    $this->send_response(['id' => $result], 'Division created successfully', 201);
                 } else {
                     $this->send_error('Failed to create division', 500);
                 }
@@ -1933,6 +1937,9 @@ class Admin extends API_Controller {
                 
                 if (!$input) return;
                 
+                // Force division_id to null for grade-only fee structures
+                $input['division_id'] = null;
+                
                 // Handle file upload for item photo
                 if (isset($_FILES['item_photo']) && $_FILES['item_photo']['error'] === UPLOAD_ERR_OK) {
                     $upload_result = $this->upload_item_photo($_FILES['item_photo']);
@@ -1982,6 +1989,9 @@ class Admin extends API_Controller {
                 
                 if (!$input) return;
                 
+                // Force division_id to null for grade-only fee structures
+                $input['division_id'] = null;
+                
                 // Handle file upload for item photo
                 if (isset($_FILES['item_photo']) && $_FILES['item_photo']['error'] === UPLOAD_ERR_OK) {
                     $upload_result = $this->upload_item_photo($_FILES['item_photo']);
@@ -1999,8 +2009,8 @@ class Admin extends API_Controller {
                     return;
                 }
                 
-                // Check for duplicate (excluding current)
-                if ($this->Fee_structure_model->check_duplicate($input['academic_year_id'], $input['grade_id'], $input['division_id'], $input['fee_category_id'], $id)) {
+                // Check for duplicate (excluding current) - division_id is always null now
+                if ($this->Fee_structure_model->check_duplicate($input['academic_year_id'], $input['grade_id'], null, $input['fee_category_id'], $id)) {
                     $this->send_error('Fee structure already exists for this combination', 400);
                     return;
                 }

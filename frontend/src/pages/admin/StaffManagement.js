@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, Button, Table, Modal, Form, Alert, Badge, Spinner, Row, Col, InputGroup } from 'react-bootstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Typeahead } from 'react-bootstrap-typeahead';
 import { apiService } from '../../services/api';
 import toast from 'react-hot-toast';
 import Pagination from '../../components/common/Pagination';
 import { useAcademicYear } from '../../contexts/AcademicYearContext';
+import $ from 'jquery';
+import 'select2';
+import 'select2/dist/css/select2.min.css';
 
 const StaffManagement = () => {
   const location = useLocation();
@@ -23,8 +25,8 @@ const StaffManagement = () => {
     role_id: '',
     address: '',
     pincode: '',
-    grades: [],
-    divisions: []
+    selectedGradeIds: [],
+    selectedDivisionIds: []
   });
   const [errors, setErrors] = useState({});
 
@@ -37,6 +39,8 @@ const StaffManagement = () => {
 
   const searchInputRef = useRef(null);
   const queryClient = useQueryClient();
+  const gradesSelectRef = useRef(null);
+  const divisionsSelectRef = useRef(null);
 
   // Handle navigation state from Global Search
   useEffect(() => {
@@ -116,7 +120,11 @@ const StaffManagement = () => {
       try {
         const response = await apiService.get('/api/admin/roles_dropdown');
         console.log('Roles API response:', response);
-        return response.data || [];
+        // Filter out super_admin role
+        const filteredRoles = (response.data || []).filter(role => 
+          role.name && role.name.toLowerCase() !== 'super_admin'
+        );
+        return filteredRoles;
       } catch (error) {
         console.error('Error fetching roles:', error);
         throw error;
@@ -144,6 +152,110 @@ const StaffManagement = () => {
 
   const staff = staffResponse?.data || [];
   const totalItems = staffResponse?.total || 0;
+
+  // Initialize Select2 when modal opens
+  useEffect(() => {
+    if (showModal && gradesSelectRef.current && divisionsSelectRef.current && grades.length > 0 && divisions.length > 0) {
+      // Initialize Grades Select2
+      const $gradesSelect = $(gradesSelectRef.current);
+      $gradesSelect.select2({
+        placeholder: 'Select grades...',
+        allowClear: true,
+        closeOnSelect: false,
+        width: '100%',
+        theme: 'bootstrap-5',
+        tags: true,
+        tokenSeparators: [',', ' '],
+        templateSelection: function (data) {
+          if (!data.id) return data.text;
+          
+          const $selection = $(
+            '<span class="select2-selection__choice__custom">' +
+              '<span class="select2-selection__choice__remove-custom" role="presentation">×</span>' +
+              data.text +
+            '</span>'
+          );
+          
+          return $selection;
+        }
+      });
+
+      // Initialize Divisions Select2
+      const $divisionsSelect = $(divisionsSelectRef.current);
+      $divisionsSelect.select2({
+        placeholder: 'Select divisions...',
+        allowClear: true,
+        closeOnSelect: false,
+        width: '100%',
+        theme: 'bootstrap-5',
+        tags: true,
+        tokenSeparators: [',', ' '],
+        templateSelection: function (data) {
+          if (!data.id) return data.text;
+          
+          const $selection = $(
+            '<span class="select2-selection__choice__custom">' +
+              '<span class="select2-selection__choice__remove-custom" role="presentation">×</span>' +
+              data.text +
+            '</span>'
+          );
+          
+          return $selection;
+        }
+      });
+
+      // Handle grade selection changes
+      $gradesSelect.on('change', function() {
+        const selectedValues = $(this).val() || [];
+        setFormData(prev => ({
+          ...prev,
+          selectedGradeIds: selectedValues.map(val => val.toString())
+        }));
+      });
+
+      // Handle division selection changes
+      $divisionsSelect.on('change', function() {
+        const selectedValues = $(this).val() || [];
+        setFormData(prev => ({
+          ...prev,
+          selectedDivisionIds: selectedValues.map(val => val.toString())
+        }));
+      });
+
+      // Set initial values if editing
+      if (formData.selectedGradeIds.length > 0) {
+        $gradesSelect.val(formData.selectedGradeIds).trigger('change');
+      }
+      if (formData.selectedDivisionIds.length > 0) {
+        $divisionsSelect.val(formData.selectedDivisionIds).trigger('change');
+      }
+
+      // Cleanup function
+      return () => {
+        if ($gradesSelect.data('select2')) {
+          $gradesSelect.select2('destroy');
+        }
+        if ($divisionsSelect.data('select2')) {
+          $divisionsSelect.select2('destroy');
+        }
+      };
+    }
+  }, [showModal, grades, divisions, editingStaff]);
+
+  // Update Select2 values when formData changes (for editing)
+  useEffect(() => {
+    if (showModal && editingStaff && gradesSelectRef.current && divisionsSelectRef.current) {
+      const $gradesSelect = $(gradesSelectRef.current);
+      const $divisionsSelect = $(divisionsSelectRef.current);
+
+      if ($gradesSelect.data('select2')) {
+        $gradesSelect.val(formData.selectedGradeIds).trigger('change');
+      }
+      if ($divisionsSelect.data('select2')) {
+        $divisionsSelect.val(formData.selectedDivisionIds).trigger('change');
+      }
+    }
+  }, [formData.selectedGradeIds, formData.selectedDivisionIds, showModal, editingStaff]);
 
   // Create staff mutation
   const createMutation = useMutation({
@@ -192,20 +304,37 @@ const StaffManagement = () => {
     }
   });
 
-  const handleShowModal = (staffMember = null) => {
+  const handleShowModal = async (staffMember = null) => {
+    setErrors({});
+    setShowModal(true);
+    
     if (staffMember) {
-      setEditingStaff(staffMember);
-      setFormData({
-        name: staffMember.name,
-        mobile: staffMember.mobile,
-        email: staffMember.email || '',
-        password: '',
-        role_id: staffMember.role_id ? staffMember.role_id.toString() : '',
-        address: staffMember.address || '',
-        pincode: staffMember.pincode || '',
-        grades: staffMember.assigned_grades || [],
-        divisions: staffMember.assigned_divisions || []
-      });
+      try {
+        // Fetch full staff details including assignments
+        const response = await apiService.get(`/api/admin/staff/${staffMember.id}`);
+        const fullStaffData = response.data;
+        
+        console.log('Loading staff assignments for editing');
+        
+        setEditingStaff(fullStaffData);
+        
+        // Set basic form data with IDs for multi-select
+        setFormData({
+          name: fullStaffData.name,
+          mobile: fullStaffData.mobile,
+          email: fullStaffData.email || '',
+          password: '',
+          role_id: fullStaffData.role_id ? fullStaffData.role_id.toString() : '',
+          address: fullStaffData.address || '',
+          pincode: fullStaffData.pincode || '',
+          selectedGradeIds: (fullStaffData.assigned_grades || []).map(g => g.id.toString()),
+          selectedDivisionIds: (fullStaffData.assigned_divisions || []).map(d => d.id.toString())
+        });
+        
+      } catch (error) {
+        toast.error('Failed to load staff details');
+        console.error('Error loading staff details:', error);
+      }
     } else {
       setEditingStaff(null);
       setFormData({
@@ -216,12 +345,10 @@ const StaffManagement = () => {
         role_id: '',
         address: '',
         pincode: '',
-        grades: [],
-        divisions: []
+        selectedGradeIds: [],
+        selectedDivisionIds: []
       });
     }
-    setErrors({});
-    setShowModal(true);
   };
 
   const handleCloseModal = () => {
@@ -235,8 +362,8 @@ const StaffManagement = () => {
       role_id: '',
       address: '',
       pincode: '',
-      grades: [],
-      divisions: []
+      selectedGradeIds: [],
+      selectedDivisionIds: []
     });
     setErrors({});
   };
@@ -282,9 +409,15 @@ const StaffManagement = () => {
 
     const submitData = { 
       ...formData,
-      grades: formData.grades.map(g => g.id || g),
-      divisions: formData.divisions.map(d => d.id || d)
+      grades: formData.selectedGradeIds,
+      divisions: formData.selectedDivisionIds
     };
+    
+    // Remove the ID arrays from the final data
+    delete submitData.selectedGradeIds;
+    delete submitData.selectedDivisionIds;
+    
+    console.log('Submitting staff data:', submitData);
     
     if (editingStaff && !submitData.password) {
       delete submitData.password;
@@ -634,25 +767,23 @@ const StaffManagement = () => {
                         <option value="5">Teacher</option>
                       </Form.Select>
                     ) : (
-                      <Typeahead
-                        id="staff-role"
-                        options={roles}
-                        labelKey="name"
-                        placeholder="Search role..."
-                        clearButton={true}
-                        size="lg"
-                        onChange={(selected) => {
-                          const roleId = selected.length > 0 ? selected[0].id.toString() : '';
-                          setFormData(prev => ({ ...prev, role_id: roleId }));
+                      <Form.Select
+                        value={formData.role_id}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, role_id: e.target.value }));
                           if (errors.role_id) {
                             setErrors(prev => ({ ...prev, role_id: '' }));
                           }
                         }}
-                        selected={roles.filter(role => role.id.toString() === formData.role_id.toString())}
                         isInvalid={!!errors.role_id}
-                        className={`typeahead-modal ${!!errors.role_id ? 'is-invalid' : ''}`}
-                        multiple={false}
-                      />
+                        size="lg"
+                        className="form-control-lg"
+                      >
+                        <option value="">Select Role</option>
+                        {roles.map(role => (
+                          <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
+                      </Form.Select>
                     )}
                     {!!errors.role_id && (
                       <div className="invalid-feedback d-block">
@@ -724,35 +855,46 @@ const StaffManagement = () => {
                     <i className="bi bi-bookmark-check me-2"></i>Grade & Division Assignments
                   </h6>
                 </div>
+                
+                {/* Grades Multi-Select */}
                 <div className="col-md-6 mb-3">
                   <label className="form-label text-muted">
                     <i className="bi bi-bookmark me-2"></i>Assigned Grades
                   </label>
-                  <Typeahead
-                    id="grades-typeahead"
-                    labelKey="name"
+                  
+                  <select
+                    ref={gradesSelectRef}
                     multiple
-                    onChange={(selected) => setFormData(prev => ({ ...prev, grades: selected }))}
-                    options={grades}
-                    placeholder="Select grades to assign..."
-                    selected={formData.grades}
-                    className="typeahead-filter"
-                  />
+                    className="form-control"
+                    style={{ width: '100%' }}
+                  >
+                    {grades.map(grade => (
+                      <option key={grade.id} value={grade.id}>
+                        {grade.name}
+                      </option>
+                    ))}
+                  </select>
+                  
                 </div>
+
+                {/* Divisions Multi-Select */}
                 <div className="col-md-6 mb-3">
                   <label className="form-label text-muted">
                     <i className="bi bi-grid me-2"></i>Assigned Divisions
                   </label>
-                  <Typeahead
-                    id="divisions-typeahead"
-                    labelKey={(option) => `${option.name} (${option.grade_name || 'Grade'})`}
+                  
+                  <select
+                    ref={divisionsSelectRef}
                     multiple
-                    onChange={(selected) => setFormData(prev => ({ ...prev, divisions: selected }))}
-                    options={divisions}
-                    placeholder="Select divisions to assign..."
-                    selected={formData.divisions}
-                    className="typeahead-filter"
-                  />
+                    className="form-control"
+                    style={{ width: '100%' }}
+                  >
+                    {divisions.map(division => (
+                      <option key={division.id} value={division.id}>
+                        {division.name} ({division.grade_name || 'Grade'})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </Modal.Body>
@@ -826,47 +968,86 @@ const StaffManagement = () => {
             overflow: hidden;
           }
           
-          /* Typeahead Styling */
-          .typeahead-filter .rbt-input-main {
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-            padding: 8px 12px;
-            font-size: 14px;
+          /* Multi-select styling */
+          details summary {
+            cursor: pointer;
           }
-          .typeahead-filter .rbt-input-main:focus {
-            border-color: #28a745;
-            box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.15);
+          details summary:hover {
+            background-color: #f8f9fa;
           }
-          .rbt-menu {
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            border: 1px solid #e9ecef;
-            max-height: 200px;
-            overflow-y: auto;
+          
+          /* Tag styling */
+          .badge-tag:hover {
+            background-color: #dee2e6 !important;
           }
-          .rbt-menu-item {
-            padding: 10px 16px;
-            border-bottom: 1px solid #f8f9fa;
+          .btn-close-tag:hover {
+            color: #212529 !important;
+            background-color: rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
           }
-          .rbt-menu-item:last-child {
-            border-bottom: none;
+          
+          /* Form control styling for tag container */
+          .form-control:focus-within {
+            border-color: #86b7fe;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
           }
-          .rbt-menu-item.active, .rbt-menu-item:hover {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
+          
+          /* Select2 Custom Tag Styling */
+          .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+            background-color: #e9ecef !important;
+            border: 1px solid #dee2e6 !important;
+            border-radius: 6px !important;
+            color: #495057 !important;
+            font-size: 0.875rem !important;
+            padding: 4px 8px !important;
+            margin: 2px 4px 2px 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
           }
-          .rbt-token {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            border: none;
-            color: white;
-            border-radius: 12px;
+          
+          .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove {
+            color: #6c757d !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            font-weight: bold !important;
+            line-height: 1 !important;
+            margin-left: 6px !important;
+            order: 2 !important;
+            padding: 0 !important;
+            background: none !important;
+            border: none !important;
           }
-          .rbt-close {
-            color: rgba(255, 255, 255, 0.8);
+          
+          .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove:hover {
+            color: #212529 !important;
+            background-color: rgba(0, 0, 0, 0.1) !important;
+            border-radius: 50% !important;
           }
-          .rbt-close:hover {
-            color: white;
+          
+          .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice:hover {
+            background-color: #dee2e6 !important;
+            border-color: #c6ccd2 !important;
           }
+          
+          .select2-container--bootstrap-5 .select2-selection--multiple {
+            border: 1px solid #ced4da !important;
+            border-radius: 6px !important;
+            min-height: 45px !important;
+            padding: 4px 8px !important;
+          }
+          
+          .select2-container--bootstrap-5.select2-container--focus .select2-selection--multiple {
+            border-color: #28a745 !important;
+            box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.15) !important;
+          }
+          
+          .select2-dropdown {
+            border: 1px solid #ced4da !important;
+            border-radius: 6px !important;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+          }
+          
           @keyframes pulse {
             0% { background-color: #fff3cd; }
             50% { background-color: #ffeaa7; }
