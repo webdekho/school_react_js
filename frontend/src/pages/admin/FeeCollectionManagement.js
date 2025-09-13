@@ -19,6 +19,7 @@ const FeeCollectionManagement = () => {
   const [showCollectModal, setShowCollectModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [selectedOptionalFees, setSelectedOptionalFees] = useState([]);
   const [collectionData, setCollectionData] = useState({
     amount: '',
     payment_method: 'cash',
@@ -143,6 +144,22 @@ const FeeCollectionManagement = () => {
     enabled: !!selectedStudent?.id && !!selectedAcademicYear?.id
   });
 
+  // Get available optional fees for the selected student
+  const { data: availableOptionalFeesResponse, isLoading: optionalFeesLoading } = useQuery({
+    queryKey: ['available_optional_fees', selectedStudent?.id, selectedStudent?.grade_id],
+    queryFn: async () => {
+      if (!selectedStudent?.id || !selectedStudent?.grade_id) {
+        return { data: [] };
+      }
+      
+      const response = await apiService.get(
+        `/api/admin/available_optional_fees/${selectedStudent.id}?grade_id=${selectedStudent.grade_id}`
+      );
+      return response.data;
+    },
+    enabled: !!selectedStudent?.id && !!selectedStudent?.grade_id
+  });
+
   // Fee collections with pagination
   const { data: collectionsResponse, isLoading: collectionsLoading, error } = useQuery({
     queryKey: ['fee_collections', currentPage, itemsPerPage, debouncedSearchTerm, dateFilter, collectionFilters],
@@ -238,6 +255,9 @@ const FeeCollectionManagement = () => {
   const structures = structuresResponse?.data || [];
   const structuresTotalItems = structuresResponse?.total || 0;
   const grades = gradesResponse?.data || [];
+
+  const studentFees = studentFeesResponse?.data || [];
+  const availableOptionalFees = availableOptionalFeesResponse?.data || [];
 
   // Debug logging
   console.log('Collections data:', collections?.slice(0, 2));
@@ -352,18 +372,61 @@ const FeeCollectionManagement = () => {
       });
       return response;
     },
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       queryClient.invalidateQueries(['fee_collections']);
       queryClient.invalidateQueries(['student_fees']);
       toast.success('Fee collected successfully!');
       setShowCollectModal(false);
       resetCollectionForm();
       
-      // Show receipt option
-      if (response.data?.receipt_number) {
-        toast.success(`Receipt ${response.data.receipt_number} generated`, {
-          duration: 5000
-        });
+      // Automatically show receipt after successful collection
+      if (response.data?.id || response.data?.collection_id) {
+        const collectionId = response.data.id || response.data.collection_id;
+        try {
+          // Fetch complete receipt details
+          const receiptResponse = await apiService.get(`/api/admin/fee_collections/${collectionId}`);
+          let receiptData;
+          
+          if (receiptResponse.data && receiptResponse.data.data) {
+            receiptData = receiptResponse.data.data;
+          } else if (receiptResponse.data) {
+            receiptData = receiptResponse.data;
+          }
+          
+          if (receiptData && receiptData.receipt_number) {
+            setSelectedReceipt(receiptData);
+            setShowReceiptModal(true);
+            toast.success(
+              (t) => (
+                <div className="d-flex align-items-center justify-content-between">
+                  <span>
+                    <i className="bi bi-check-circle-fill text-success me-2"></i>
+                    Receipt {receiptData.receipt_number} generated and ready to print!
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline-primary"
+                    className="ms-3"
+                    onClick={() => {
+                      toast.dismiss(t.id);
+                      setShowReceiptModal(true);
+                    }}
+                  >
+                    <i className="bi bi-printer me-1"></i>
+                    Print Now
+                  </Button>
+                </div>
+              ),
+              {
+                duration: 8000,
+                id: 'receipt-generated'
+              }
+            );
+          }
+        } catch (receiptError) {
+          console.error('Error fetching receipt details:', receiptError);
+          toast.error('Fee collected but failed to load receipt details');
+        }
       }
     },
     onError: (error) => {
@@ -424,6 +487,58 @@ const FeeCollectionManagement = () => {
     }
   };
 
+  // Handle optional fee selection
+  const handleOptionalFeeToggle = (fee) => {
+    setSelectedOptionalFees(prev => {
+      const isSelected = prev.some(f => f.id === fee.id);
+      const newSelectedFees = isSelected 
+        ? prev.filter(f => f.id !== fee.id)
+        : [...prev, fee];
+      
+      // Update amount field with new total
+      const newTotal = calculateTotalAmountWithFees(selectedAssignment, newSelectedFees);
+      setCollectionData(prev => ({
+        ...prev,
+        amount: newTotal.toString()
+      }));
+      
+      return newSelectedFees;
+    });
+  };
+
+  // Helper function to calculate total with specific fees
+  const calculateTotalAmountWithFees = (assignment, optionalFees) => {
+    let total = 0;
+    
+    // Add selected assignment amount
+    if (assignment) {
+      total += parseFloat(assignment.pending_amount || 0);
+    }
+    
+    // Add selected optional fees
+    optionalFees.forEach(fee => {
+      total += parseFloat(fee.amount || 0);
+    });
+    
+    return total;
+  };
+
+  // Calculate total amount including selected optional fees
+  const calculateTotalAmount = () => {
+    return calculateTotalAmountWithFees(selectedAssignment, selectedOptionalFees);
+  };
+
+  // Auto-update amount when fees change (for cases without mandatory assignment)
+  useEffect(() => {
+    if (selectedOptionalFees.length > 0 && !selectedAssignment) {
+      const totalAmount = calculateTotalAmountWithFees(null, selectedOptionalFees);
+      setCollectionData(prev => ({
+        ...prev,
+        amount: totalAmount.toString()
+      }));
+    }
+  }, [selectedOptionalFees, selectedAssignment]);
+
   const resetCollectionForm = () => {
     setCollectionData({
       amount: '',
@@ -433,6 +548,7 @@ const FeeCollectionManagement = () => {
     });
     setSelectedStudent(null);
     setSelectedAssignment(null);
+    setSelectedOptionalFees([]);
     setStudentSearch('');
     setCategorySearch('');
     setShowCategoryDropdown(false);
@@ -454,10 +570,12 @@ const FeeCollectionManagement = () => {
 
   const handleAssignmentSelect = (assignment) => {
     setSelectedAssignment(assignment);
-    const maxAmount = assignment.pending_amount;
+    
+    // Calculate total including any already selected optional fees
+    const totalAmount = calculateTotalAmountWithFees(assignment, selectedOptionalFees);
     setCollectionData(prev => ({
       ...prev,
-      amount: maxAmount.toString()
+      amount: totalAmount.toString()
     }));
   };
 
@@ -480,11 +598,11 @@ const FeeCollectionManagement = () => {
       }
     } else {
       // Validation for assigned fee payment
-      if (!selectedAssignment) {
-        newErrors.assignment = 'Please select a fee to collect';
+      if (!selectedAssignment && selectedOptionalFees.length === 0) {
+        newErrors.assignment = 'Please select at least one fee to collect';
       }
-      if (selectedAssignment && parseFloat(collectionData.amount) > selectedAssignment.pending_amount) {
-        newErrors.amount = 'Amount cannot exceed pending amount';
+      if (selectedAssignment && parseFloat(collectionData.amount) > calculateTotalAmount()) {
+        newErrors.amount = 'Amount cannot exceed total selected amount';
       }
     }
     
@@ -518,7 +636,18 @@ const FeeCollectionManagement = () => {
       paymentData.direct_fee_description = directPaymentData.description || `Direct payment for ${directPaymentData.category_name}`;
       paymentData.is_direct_payment = 1;
     } else {
-      paymentData.student_fee_assignment_id = selectedAssignment.id;
+      // Handle both mandatory and optional fees
+      if (selectedAssignment) {
+        paymentData.student_fee_assignment_id = selectedAssignment.id;
+      }
+      
+      // Add optional fees data
+      if (selectedOptionalFees.length > 0) {
+        paymentData.optional_fees = selectedOptionalFees.map(fee => ({
+          fee_structure_id: fee.id,
+          amount: fee.amount
+        }));
+      }
     }
     
     collectFeeMutation.mutate(paymentData);
@@ -782,247 +911,6 @@ const FeeCollectionManagement = () => {
           </Card>
         </Tab>
 
-        <Tab eventKey="structures" title="Mandatory Fees">
-          {/* Search and Filters for Fee Structures */}
-          <Card className="border-0 shadow-sm mb-4">
-            <Card.Body>
-              <Row>
-                <Col md={4}>
-                  <InputGroup>
-                    <InputGroup.Text>
-                      <i className="bi bi-search"></i>
-                    </InputGroup.Text>
-                    <Form.Control
-                      type="text"
-                      placeholder="Search fee structures..."
-                      value={structureSearchTerm}
-                      onChange={(e) => setStructureSearchTerm(e.target.value)}
-                    />
-                  </InputGroup>
-                </Col>
-                <Col md={3}>
-                  <Form.Select
-                    value={structureFilters.grade_id}
-                    onChange={(e) => setStructureFilters(prev => ({ ...prev, grade_id: e.target.value }))}
-                  >
-                    <option value="">All Grades</option>
-                    {grades.map((grade) => (
-                      <option key={grade.id} value={grade.id}>
-                        {grade.name}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Col>
-                <Col md={3}>
-                  <div className="position-relative">
-                    <Form.Control
-                      type="text"
-                      placeholder="Search fee category..."
-                      value={structureCategorySearch}
-                      onChange={(e) => handleStructureCategorySearchChange(e.target.value)}
-                      onFocus={() => setShowStructureCategoryDropdown(true)}
-                      onBlur={() => setTimeout(() => setShowStructureCategoryDropdown(false), 200)}
-                    />
-                    {showStructureCategoryDropdown && !categoriesLoading && filteredStructureCategories.length > 0 && (
-                      <div className="position-absolute w-100 bg-white border rounded shadow-sm mt-1" style={{ zIndex: 1050, maxHeight: '200px', overflowY: 'auto' }}>
-                        <div
-                          className="p-2 border-bottom cursor-pointer"
-                          onClick={() => {
-                            setStructureCategorySearch('');
-                            setShowStructureCategoryDropdown(false);
-                            setStructureFilters(prev => ({ ...prev, category_id: '' }));
-                          }}
-                          style={{ cursor: 'pointer', backgroundColor: '#f8f9fa' }}
-                        >
-                          <i className="bi bi-x-circle me-2 text-muted"></i>
-                          <em>All Categories</em>
-                        </div>
-                        {filteredStructureCategories.map((category) => (
-                          <div
-                            key={category.id}
-                            className="p-2 border-bottom cursor-pointer d-flex align-items-center"
-                            onClick={() => handleStructureCategorySelect(category)}
-                            style={{ cursor: 'pointer' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}
-                          >
-                            <i className="bi bi-tag me-2 text-muted"></i>
-                            <div>
-                              <div className="fw-medium">{category.name}</div>
-                              {category.description && (
-                                <small className="text-muted">{category.description}</small>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Col>
-                <Col md={2} className="text-end">
-                  <Button
-                    variant="outline-secondary"
-                    size="sm"
-                    onClick={() => {
-                      setStructureSearchTerm('');
-                      setStructureFilters({ grade_id: '', category_id: '' });
-                      setStructureCategorySearch('');
-                      setShowStructureCategoryDropdown(false);
-                      setCurrentPage(1);
-                    }}
-                    title="Clear Filters"
-                  >
-                    <i className="bi bi-x-circle me-1"></i>
-                    Clear
-                  </Button>
-                </Col>
-              </Row>
-            </Card.Body>
-          </Card>
-
-          <Card className="border-0 shadow-sm">
-            <Card.Body>
-              {structuresLoading ? (
-                <div className="text-center py-5">
-                  <Spinner animation="border" />
-                </div>
-              ) : structuresError ? (
-                <Alert variant="danger">Failed to load fee structures</Alert>
-              ) : structures.length > 0 ? (
-                <>
-                  <div className="row">
-                    {structures.map((structure) => (
-                      <div key={structure.id} className="col-md-6 col-lg-4 mb-4">
-                        <Card className="h-100 border-danger shadow-sm">
-                          <Card.Header className="bg-danger bg-opacity-10 border-danger">
-                            <div className="d-flex justify-content-between align-items-center">
-                              <Badge bg="danger" className="fw-bold">
-                                <i className="bi bi-asterisk me-1" style={{fontSize: '8px'}}></i>
-                                MANDATORY
-                              </Badge>
-                              <small className="text-muted">
-                                ID: {structure.id}
-                              </small>
-                            </div>
-                          </Card.Header>
-                          <Card.Body className="d-flex flex-column">
-                            <div className="flex-grow-1">
-                              <h6 className="card-title text-danger fw-bold mb-2">
-                                {structure.category_name || 'Unknown Category'}
-                              </h6>
-                              
-                              {structure.description && (
-                                <p className="card-text text-muted small mb-3">
-                                  {structure.description}
-                                </p>
-                              )}
-                              
-                              <div className="row text-center mb-3">
-                                <div className="col-6">
-                                  <small className="text-muted d-block">Amount</small>
-                                  <span className="fw-bold text-success fs-5">
-                                    ₹{parseFloat(structure.amount || 0).toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="col-6">
-                                  <small className="text-muted d-block">Due Date</small>
-                                  <span className="fw-medium">
-                                    {structure.due_date ? 
-                                      new Date(structure.due_date).toLocaleDateString() : 
-                                      'Not set'
-                                    }
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="mb-3">
-                                <small className="text-muted d-block mb-1">Applicable To:</small>
-                                <div className="d-flex flex-wrap gap-1">
-                                  {structure.grade_name ? (
-                                    <Badge bg="secondary" pill>
-                                      {structure.grade_name}
-                                      {structure.division_name && ` - ${structure.division_name}`}
-                                    </Badge>
-                                  ) : (
-                                    <Badge bg="info" pill>All Grades</Badge>
-                                  )}
-                                  
-                                  {structure.semester ? (
-                                    <Badge bg="warning" pill>{structure.semester}</Badge>
-                                  ) : (
-                                    <Badge bg="primary" pill>Both Semesters</Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="mt-auto">
-                              {structure.academic_year_name && (
-                                <small className="text-muted d-block mb-2">
-                                  <i className="bi bi-calendar-range me-1"></i>
-                                  {structure.academic_year_name}
-                                </small>
-                              )}
-                              
-                              <div className="d-flex justify-content-between align-items-center">
-                                <Badge 
-                                  bg={structure.is_active ? 'success' : 'danger'}
-                                  pill
-                                >
-                                  {structure.is_active ? 'Active' : 'Inactive'}
-                                </Badge>
-                                
-                                <Button 
-                                  variant="outline-primary"
-                                  size="sm"
-                                  onClick={() => {
-                                    // Navigate to fee structures management for editing
-                                    navigate('/admin/fee-structures');
-                                  }}
-                                >
-                                  <i className="bi bi-pencil me-1"></i>
-                                  Edit
-                                </Button>
-                              </div>
-                            </div>
-                          </Card.Body>
-                        </Card>
-                      </div>
-                    ))}
-                  </div>
-
-                  {structuresTotalItems > 0 && (
-                    <div className="mt-4">
-                      <Pagination
-                        currentPage={currentPage}
-                        totalItems={structuresTotalItems}
-                        itemsPerPage={itemsPerPage}
-                        onPageChange={setCurrentPage}
-                        onItemsPerPageChange={(newSize) => {
-                          setItemsPerPage(newSize);
-                          setCurrentPage(1);
-                        }}
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-5">
-                  <i className="bi bi-list-ul display-1 text-muted mb-4"></i>
-                  <h5>No Mandatory Fee Structures Found</h5>
-                  <p className="text-muted">No mandatory fee structures match your search criteria.</p>
-                  <Button 
-                    variant="primary" 
-                    onClick={() => navigate('/admin/fee-structures')}
-                  >
-                    <i className="bi bi-plus-circle me-2"></i>
-                    Create Fee Structure
-                  </Button>
-                </div>
-              )}
-            </Card.Body>
-          </Card>
-        </Tab>
 
         <Tab eventKey="history" title="Collection History">
           {/* Search and Filters */}
@@ -1190,7 +1078,6 @@ const FeeCollectionManagement = () => {
                         <th>Payment Method</th>
                         <th>Collected By</th>
                         <th>Date</th>
-                        <th>Status</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -1237,13 +1124,6 @@ const FeeCollectionManagement = () => {
                           </td>
                           <td>
                             <small>{new Date(collection.collection_date).toLocaleDateString()}</small>
-                          </td>
-                          <td>
-                            {collection.is_verified ? (
-                              <Badge bg="success">Verified</Badge>
-                            ) : (
-                              <Badge bg="warning">Pending</Badge>
-                            )}
                           </td>
                           <td>
                             <div className="btn-group btn-group-sm">
@@ -1396,69 +1276,138 @@ const FeeCollectionManagement = () => {
 
                   <Card.Body>
                     <label className="form-label fw-medium">
-                      <i className="bi bi-list-check me-2"></i>Select Fee to Collect *
+                      <i className="bi bi-list-check me-2"></i>Select Fees to Collect *
                     </label>
                     
                     {feesLoading ? (
                       <div className="text-center p-3">
                         <Spinner size="sm" />
                       </div>
-                    ) : studentFeesResponse?.data?.length > 0 ? (
-                      <div className="max-height-200 overflow-auto">
-                        {studentFeesResponse.data
-                          .filter(fee => fee.status !== 'paid')
-                          .map((fee) => (
-                          <div 
-                            key={fee.id}
-                            className={`p-3 border rounded mb-2 cursor-pointer ${selectedAssignment?.id === fee.id ? 'border-primary bg-primary bg-opacity-10' : 'border-light hover-bg-light'}`}
-                            onClick={() => handleAssignmentSelect(fee)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <div className="d-flex justify-content-between align-items-center">
-                              <div>
-                                <div className="fw-medium">{fee.category_name}</div>
-                                <small className="text-muted">
-                                  Due: {new Date(fee.due_date).toLocaleDateString()}
-                                </small>
-                              </div>
-                              <div className="text-end">
-                                <div className="fw-bold text-success">
-                                  {formatCurrency(fee.pending_amount)}
-                                </div>
-                                <div className="small text-muted">
-                                  Total: {formatCurrency(fee.total_amount)} | 
-                                  Paid: {formatCurrency(fee.paid_amount)}
-                                </div>
-                                {getStatusBadge(fee.status)}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
                     ) : (
                       <div>
-                        <Alert variant="info" className="mb-3">
-                          <i className="bi bi-info-circle me-2"></i>
-                          No pending fees found for this student.
-                        </Alert>
-                        
-                        <div className="border rounded p-3 bg-light">
-                          <h6 className="mb-3">
-                            <i className="bi bi-plus-circle me-2"></i>
-                            Collect Direct Payment
-                          </h6>
-                          <p className="text-muted small mb-3">
-                            For non-semester fees like events, penalties, or other miscellaneous charges.
-                          </p>
-                          <Button 
-                            variant="primary" 
-                            size="sm"
-                            onClick={() => handleCreateDirectPayment()}
-                          >
-                            <i className="bi bi-currency-rupee me-2"></i>
-                            Create Direct Payment
-                          </Button>
-                        </div>
+                        {/* Mandatory Fees Section */}
+                        {studentFeesResponse?.data?.length > 0 && (
+                          <div className="mb-4">
+                            <h6 className="text-primary mb-3">
+                              <i className="bi bi-exclamation-triangle me-2"></i>
+                              Mandatory Fees
+                            </h6>
+                            <div className="max-height-200 overflow-auto">
+                              {studentFeesResponse.data
+                                .filter(fee => fee.status !== 'paid' && fee.is_mandatory == 1)
+                                .map((fee) => (
+                                <div 
+                                  key={fee.id}
+                                  className={`p-3 border rounded mb-2 cursor-pointer ${selectedAssignment?.id === fee.id ? 'border-primary bg-primary bg-opacity-10' : 'border-light hover-bg-light'}`}
+                                  onClick={() => handleAssignmentSelect(fee)}
+                                  style={{ cursor: 'pointer' }}
+                                >
+                                  <div className="d-flex justify-content-between align-items-center">
+                                    <div>
+                                      <div className="fw-medium">{fee.category_name}</div>
+                                      <small className="text-muted">
+                                        Due: {new Date(fee.due_date).toLocaleDateString()}
+                                      </small>
+                                    </div>
+                                    <div className="text-end">
+                                      <div className="fw-bold text-success">
+                                        {formatCurrency(fee.pending_amount)}
+                                      </div>
+                                      <div className="small text-muted">
+                                        Total: {formatCurrency(fee.total_amount)} | 
+                                        Paid: {formatCurrency(fee.paid_amount)}
+                                      </div>
+                                      {getStatusBadge(fee.status)}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Optional Fees Section */}
+                        {availableOptionalFeesResponse?.data?.length > 0 && (
+                          <div className="mb-4">
+                            <h6 className="text-secondary mb-3">
+                              <i className="bi bi-check-square me-2"></i>
+                              Optional Fees (Select as needed)
+                            </h6>
+                            <div className="max-height-200 overflow-auto">
+                              {availableOptionalFeesResponse.data.map((fee) => (
+                                <div 
+                                  key={fee.id}
+                                  className={`p-3 border rounded mb-2 cursor-pointer ${selectedOptionalFees.some(f => f.id === fee.id) ? 'border-success bg-success bg-opacity-10' : 'border-light hover-bg-light'}`}
+                                  onClick={() => handleOptionalFeeToggle(fee)}
+                                  style={{ cursor: 'pointer' }}
+                                >
+                                  <div className="d-flex justify-content-between align-items-center">
+                                    <div>
+                                      <div className="fw-medium">{fee.category_name}</div>
+                                      <small className="text-muted">
+                                        {fee.description || 'Optional fee'}
+                                      </small>
+                                    </div>
+                                    <div className="text-end">
+                                      <div className="fw-bold text-success">
+                                        {formatCurrency(fee.amount)}
+                                      </div>
+                                      <div className="small text-muted">
+                                        Optional
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* No Fees Available */}
+                        {(!studentFeesResponse?.data?.length || studentFeesResponse.data.filter(fee => fee.status !== 'paid' && fee.is_mandatory == 1).length === 0) && 
+                         (!availableOptionalFeesResponse?.data?.length || availableOptionalFeesResponse.data.length === 0) && (
+                          <div>
+                            <Alert variant="info" className="mb-3">
+                              <i className="bi bi-info-circle me-2"></i>
+                              No pending fees found for this student.
+                            </Alert>
+                            
+                            <div className="border rounded p-3 bg-light">
+                              <h6 className="mb-3">
+                                <i className="bi bi-plus-circle me-2"></i>
+                                Collect Direct Payment
+                              </h6>
+                              <p className="text-muted small mb-3">
+                                For non-semester fees like events, penalties, or other miscellaneous charges.
+                              </p>
+                              <Button 
+                                variant="primary" 
+                                size="sm"
+                                onClick={() => handleCreateDirectPayment()}
+                              >
+                                <i className="bi bi-currency-rupee me-2"></i>
+                                Create Direct Payment
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Total Amount Display */}
+                        {(selectedAssignment || selectedOptionalFees.length > 0) && (
+                          <div className="mt-3 p-3 bg-light border rounded">
+                            <div className="d-flex justify-content-between align-items-center">
+                              <span className="fw-medium">Total Amount:</span>
+                              <span className="fw-bold fs-5 text-success">
+                                {formatCurrency(calculateTotalAmount())}
+                              </span>
+                            </div>
+                            {selectedOptionalFees.length > 0 && (
+                              <small className="text-muted">
+                                Including {selectedOptionalFees.length} optional fee(s)
+                              </small>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1470,28 +1419,30 @@ const FeeCollectionManagement = () => {
               )}
 
               {/* Collection Details */}
-              {selectedAssignment && (
+              {(selectedAssignment || selectedOptionalFees.length > 0) && (
                 <Row>
                   <Col md={6}>
                     <div className="form-floating mb-3">
                       <Form.Control
                         type="number"
                         step="0.01"
-                        max={selectedAssignment.pending_amount}
-                        value={collectionData.amount}
+                        min="0"
+                        value={collectionData.amount || calculateTotalAmount()}
                         onChange={(e) => handleInputChange('amount', e.target.value)}
                         placeholder="Amount"
                         isInvalid={!!errors.amount}
                         id="amount"
                       />
                       <label htmlFor="amount">
-                        <i className="bi bi-currency-rupee me-2"></i>Amount *
+                        <i className="bi bi-currency-rupee me-2"></i>Amount * (Editable)
                       </label>
                       <Form.Control.Feedback type="invalid">
                         {errors.amount}
                       </Form.Control.Feedback>
                       <div className="form-text">
-                        Maximum: {formatCurrency(selectedAssignment.pending_amount)}
+                        <small className="text-muted">
+                          <i className="bi bi-pencil-square me-1"></i>You can edit this amount
+                        </small>
                       </div>
                     </div>
                   </Col>
@@ -1766,7 +1717,7 @@ const FeeCollectionManagement = () => {
               <Button 
                 type="submit" 
                 variant="success"
-                disabled={collectFeeMutation.isLoading || (!selectedAssignment && !isDirectPayment) || (isDirectPayment && (!directPaymentData.category_id || !directPaymentData.amount || !collectionData.amount))}
+                disabled={collectFeeMutation.isLoading || (!selectedAssignment && !isDirectPayment && selectedOptionalFees.length === 0) || (isDirectPayment && (!directPaymentData.category_id || !directPaymentData.amount || !collectionData.amount))}
               >
                 {collectFeeMutation.isLoading ? (
                   <>

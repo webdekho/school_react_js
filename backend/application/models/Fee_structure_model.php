@@ -285,7 +285,7 @@ class Fee_structure_model extends CI_Model {
     }
     
     public function get_student_fee_assignments($student_id, $academic_year_id = null) {
-        $this->db->select('sfa.*, fs.fee_category_id, fc.name as category_name, fs.amount as original_amount, fs.due_date as original_due_date');
+        $this->db->select('sfa.*, fs.fee_category_id, fc.name as category_name, fs.amount as original_amount, fs.due_date as original_due_date, fs.is_mandatory');
         $this->db->from('student_fee_assignments sfa');
         $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id');
         $this->db->join('fee_categories fc', 'fs.fee_category_id = fc.id');
@@ -297,10 +297,75 @@ class Fee_structure_model extends CI_Model {
             $this->db->where('fs.academic_year_id', $academic_year_id);
         }
         
-        $this->db->order_by('fc.name, sfa.due_date');
+        $this->db->order_by('fs.is_mandatory DESC, fc.name, sfa.due_date');
         
         $query = $this->db->get();
         return $query->result_array();
+    }
+    
+    /**
+     * Get available optional fees for a student that can be assigned
+     * For fee collection, we only consider grade-level and universal fees (no division-specific fees)
+     */
+    public function get_available_optional_fees($student_id, $academic_year_id, $grade_id, $division_id = null) {
+        // Get all optional fee structures applicable to this student
+        $this->db->select('fs.*, fc.name as category_name, fc.description as category_description');
+        $this->db->from('fee_structures fs');
+        $this->db->join('fee_categories fc', 'fs.fee_category_id = fc.id');
+        
+        // Only filter by academic_year_id if it's provided
+        if ($academic_year_id) {
+            $this->db->where('fs.academic_year_id', $academic_year_id);
+        }
+        
+        $this->db->where('(fs.is_mandatory = 0 OR fs.is_mandatory = "0")'); // Only optional fees (handle both int and string values)
+        $this->db->where('fs.is_active', 1);
+        
+        // For fee collection, we only consider:
+        // 1. Grade-specific fees (division_id IS NULL)
+        // 2. Universal fees (both grade_id and division_id are NULL)
+        $this->db->group_start();
+        $this->db->where('fs.grade_id', $grade_id);
+        $this->db->where('fs.division_id IS NULL', null, false);
+        $this->db->group_end();
+        
+        $this->db->or_group_start();
+        $this->db->where('fs.grade_id IS NULL', null, false);
+        $this->db->where('fs.division_id IS NULL', null, false);
+        $this->db->group_end();
+        
+        $this->db->order_by('fc.name, fs.amount');
+        
+        $query = $this->db->get();
+        $all_optional_fees = $query->result_array();
+        
+        log_message('debug', 'Found ' . count($all_optional_fees) . ' optional fee structures for student ' . $student_id);
+        
+        // Get already assigned fee structures for this student
+        $this->db->select('fee_structure_id');
+        $this->db->from('student_fee_assignments');
+        $this->db->where('student_id', $student_id);
+        $this->db->where('is_active', 1);
+        $this->db->where('status !=', 'cancelled');
+        
+        $assigned_query = $this->db->get();
+        $assigned_fee_structure_ids = array_column($assigned_query->result_array(), 'fee_structure_id');
+        
+        log_message('debug', 'Found ' . count($assigned_fee_structure_ids) . ' already assigned fee structures for student ' . $student_id);
+        
+        // Filter out already assigned fees
+        $available_fees = array_filter($all_optional_fees, function($fee) use ($assigned_fee_structure_ids) {
+            return !in_array($fee['id'], $assigned_fee_structure_ids);
+        });
+        
+        // Additional filter: Remove any fees that are marked as mandatory
+        $available_fees = array_filter($available_fees, function($fee) {
+            return $fee['is_mandatory'] == 0 || $fee['is_mandatory'] == '0';
+        });
+        
+        log_message('debug', 'Returning ' . count($available_fees) . ' available optional fees for student ' . $student_id);
+        
+        return array_values($available_fees);
     }
     
     public function get_structure_statistics($id) {

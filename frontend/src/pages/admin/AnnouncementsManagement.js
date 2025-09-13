@@ -150,7 +150,6 @@ const AnnouncementsManagement = () => {
       try {
         const params = new URLSearchParams({
           type: formData.target_type === 'grade' ? 'grades' : 
-                formData.target_type === 'division' ? 'divisions' : 
                 formData.target_type === 'parent' ? 'parents' : 'staff'
         });
         
@@ -193,7 +192,8 @@ const AnnouncementsManagement = () => {
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['announcements']);
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
+      queryClient.refetchQueries({ queryKey: ['announcements'] });
       toast.success('Announcement created successfully!');
       handleCloseModal();
     },
@@ -209,7 +209,7 @@ const AnnouncementsManagement = () => {
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['announcements']);
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
       toast.success('Announcement updated successfully!');
       handleCloseModal();
     },
@@ -225,7 +225,7 @@ const AnnouncementsManagement = () => {
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['announcements']);
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
       toast.success('Announcement sent successfully!');
     },
     onError: (error) => {
@@ -240,7 +240,7 @@ const AnnouncementsManagement = () => {
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['announcements']);
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
       toast.success('Announcement deleted successfully!');
     },
     onError: (error) => {
@@ -551,7 +551,7 @@ const AnnouncementsManagement = () => {
     if (formData.channels.length === 0) {
       newErrors.channels = 'At least one channel is required';
     }
-    if (['grade', 'division', 'parent', 'staff'].includes(formData.target_type) && selectedTargets.length === 0) {
+    if (['grade', 'parent', 'staff'].includes(formData.target_type) && selectedTargets.length === 0) {
       newErrors.targets = 'Please select at least one target';
     }
     
@@ -705,7 +705,6 @@ const AnnouncementsManagement = () => {
                 <option value="">All Targets</option>
                 <option value="all">Everyone</option>
                 <option value="grade">By Grade</option>
-                <option value="division">By Division</option>
                 <option value="parent">Specific Parents</option>
                 <option value="staff">Specific Staff</option>
                 <option value="fee_due">Fee Dues</option>
@@ -733,6 +732,7 @@ const AnnouncementsManagement = () => {
                     <th>Status</th>
                     <th>Recipients</th>
                     <th>Created</th>
+                    <th>Scheduled</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -826,6 +826,17 @@ const AnnouncementsManagement = () => {
                           <div className="text-muted">
                             <small>by {announcement.created_by_name}</small>
                           </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          {announcement.scheduled_at ? (
+                            <small className="text-warning">
+                              {new Date(announcement.scheduled_at).toLocaleDateString()}
+                            </small>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -1022,7 +1033,6 @@ const AnnouncementsManagement = () => {
                     >
                       <option value="all">Send to Everyone</option>
                       <option value="grade">Send to Grade</option>
-                      <option value="division">Send to Division</option>
                       <option value="parent">Specific Parents</option>
                       <option value="staff">Specific Staff</option>
                       <option value="fee_due">Parents with Fee Dues</option>
@@ -1054,7 +1064,7 @@ const AnnouncementsManagement = () => {
               </Row>
 
               {/* Target Selection */}
-              {['grade', 'division', 'parent', 'staff'].includes(formData.target_type) && (
+              {['grade', 'parent', 'staff'].includes(formData.target_type) && (
                 <div className="mb-3">
                   <label className="form-label fw-medium">
                     <i className="bi bi-person-check me-2"></i>

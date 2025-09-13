@@ -55,6 +55,48 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
         .modal-content, .modal-backdrop {
           display: none !important;
         }
+        .receipt-content {
+          font-size: 14px;
+          line-height: 1.4;
+        }
+        .card {
+          margin-bottom: 1rem !important;
+        }
+        .card-header {
+          padding: 0.75rem 1rem !important;
+        }
+        .card-body {
+          padding: 1rem !important;
+        }
+        .table {
+          font-size: 14px;
+        }
+        .table th, .table td {
+          padding: 0.5rem !important;
+          vertical-align: middle !important;
+        }
+        h3 {
+          font-size: 1.5rem !important;
+        }
+        h4 {
+          font-size: 1.25rem !important;
+        }
+        h6 {
+          font-size: 1rem !important;
+        }
+        .badge {
+          font-size: 0.75rem !important;
+          padding: 0.375rem 0.75rem !important;
+        }
+        .small {
+          font-size: 0.875rem !important;
+        }
+        .fs-5 {
+          font-size: 1.25rem !important;
+        }
+        .display-4 {
+          font-size: 2.5rem !important;
+        }
       }
     `
   });
@@ -94,6 +136,43 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
       toast.error('Print failed: ' + error.message);
     }
   }, [handlePrint, receiptData]);
+
+  const handlePrintInNewWindow = useCallback(() => {
+    if (receiptRef.current) {
+      const receiptContent = receiptRef.current.innerHTML;
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Receipt ${receiptData.receipt_number}</title>
+          <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+          <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+            @media print {
+              body { margin: 0; padding: 0; }
+              .no-print { display: none !important; }
+            }
+            .receipt-content { background: white; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-content">${receiptContent}</div>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.onafterprint = function() {
+                window.close();
+              };
+            };
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  }, [receiptData]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
@@ -137,16 +216,30 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
       <Modal.Body className="p-0">
         <div ref={receiptRef} className="receipt-content">
           {/* School Header */}
-          <div className="text-center border-bottom pb-4 mb-4" style={{ backgroundColor: '#f8f9fa', padding: '2rem' }}>
-            <div className="mb-3">
-              <i className="bi bi-mortarboard display-4 text-primary"></i>
+          <div className="border-bottom pb-4 mb-4" style={{ backgroundColor: '#f8f9fa', padding: '1.5rem' }}>
+            <div className="d-flex align-items-center">
+              <img 
+                src="/logo.png" 
+                alt="School Logo" 
+                style={{ 
+                  height: '80px', 
+                  width: 'auto',
+                  marginRight: '20px'
+                }}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <i className="bi bi-mortarboard display-4 text-primary" style={{ display: 'none', marginRight: '20px' }}></i>
+              <div>
+                <h3 className="mb-1 text-primary">The Trivandrum Scottish School</h3>
+                <p className="text-muted mb-2">Excellence in Education</p>
+                <small className="text-muted">
+                  Thundathil, Kariyavattom, Trivandrum, Kerala – 695581, India
+                </small>
+              </div>
             </div>
-            <h3 className="mb-1 text-primary">School Management System</h3>
-            <p className="text-muted mb-2">Excellence in Education</p>
-            <small className="text-muted">
-              123 Education Street, Knowledge City, State - 123456<br />
-              Phone: +91 98765 43210 | Email: info@school.edu
-            </small>
           </div>
 
           <div className="px-4 pb-4">
@@ -168,144 +261,170 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
             </div>
 
             {/* Student Information */}
-            <Card className="border-0 shadow-sm mb-4">
-              <Card.Header className="bg-light">
-                <h6 className="mb-0">
-                  <i className="bi bi-person-fill me-2"></i>
-                  Student Information
-                </h6>
-              </Card.Header>
-              <Card.Body>
-                <Row>
-                  <Col md={6}>
-                    <div className="mb-3">
-                      <strong>Name:</strong> {receiptData.student_name}
-                    </div>
-                    <div className="mb-3">
-                      <strong>Roll Number:</strong> {receiptData.roll_number}
-                    </div>
-                  </Col>
-                  <Col md={6}>
-                    <div className="mb-3">
-                      <strong>Class:</strong> {receiptData.grade_name} {receiptData.division_name}
-                    </div>
-                    <div className="mb-3">
-                      <strong>Parent Mobile:</strong> {receiptData.parent_mobile}
-                    </div>
-                  </Col>
-                </Row>
-              </Card.Body>
-            </Card>
-
-            {/* Payment Details */}
-            <Card className="border-0 shadow-sm mb-4">
-              <Card.Header className="bg-success text-white">
-                <h6 className="mb-0 text-white">
-                  <i className="bi bi-currency-rupee me-2"></i>
-                  Payment Details
-                </h6>
-              </Card.Header>
-              <Card.Body>
-                <Row>
-                  <Col md={8}>
-                    <div className="mb-3">
-                      <strong>Fee Category:</strong> {receiptData.category_name}
-                    </div>
-                    <div className="mb-3">
-                      <strong>Payment Method:</strong> 
-                      <span className="ms-2">
-                        <i className={`bi ${getPaymentMethodIcon(receiptData.payment_method)} me-1`}></i>
-                        {receiptData.payment_method.toUpperCase()}
-                      </span>
-                    </div>
-                    {receiptData.reference_number && (
-                      <div className="mb-3">
-                        <strong>Reference Number:</strong> {receiptData.reference_number}
-                      </div>
-                    )}
-                    {receiptData.remarks && (
-                      <div className="mb-3">
-                        <strong>Remarks:</strong> {receiptData.remarks}
-                      </div>
-                    )}
-                  </Col>
-                  <Col md={4}>
-                    <div className="bg-light p-3 rounded text-end">
-                      <div className="mb-2">
-                        <strong>Amount Paid</strong>
-                      </div>
-                      <div className="display-6 text-success fw-bold">
-                        {formatCurrency(receiptData.amount)}
-                      </div>
-                    </div>
-                  </Col>
-                </Row>
-              </Card.Body>
-            </Card>
-
-            {/* Collection Information */}
-            <Card className="border-0 shadow-sm mb-4">
-              <Card.Header className="bg-light">
-                <h6 className="mb-0">
-                  <i className="bi bi-person-badge me-2"></i>
-                  Collection Information
-                </h6>
-              </Card.Header>
-              <Card.Body>
-                <Row>
-                  <Col md={6}>
-                    <div className="mb-2">
-                      <strong>Collected By:</strong> {receiptData.collected_by_staff_name}
-                    </div>
-                    <div className="mb-2">
-                      <strong>Collection Date:</strong> {formatDate(receiptData.collection_date)}
-                    </div>
-                  </Col>
-                  <Col md={6}>
-                    <div className="mb-2">
-                      <strong>Status:</strong> 
-                      <span className={`badge ms-2 ${receiptData.is_verified ? 'bg-success' : 'bg-warning'}`}>
-                        {receiptData.is_verified ? 'Verified' : 'Pending Verification'}
-                      </span>
-                    </div>
-                    {receiptData.is_verified && receiptData.verified_by_admin_name && (
-                      <div className="mb-2">
-                        <strong>Verified By:</strong> {receiptData.verified_by_admin_name}
-                      </div>
-                    )}
-                  </Col>
-                </Row>
-              </Card.Body>
-            </Card>
-
-            {/* Footer */}
-            <div className="text-center pt-4 border-top">
-              <p className="text-muted mb-2">
-                <strong>Important:</strong> This is a computer-generated receipt and does not require a signature.
-              </p>
-              <p className="text-muted mb-1">
-                Keep this receipt safe for your records. For any queries, contact the school office.
-              </p>
-              <small className="text-muted">
-                Generated on {new Date().toLocaleString('en-IN')} | School Management System v1.0
-              </small>
+            <div className="mb-4">
+              <h6 className="mb-3 text-primary">
+                <i className="bi bi-person-fill me-2"></i>
+                Student Information
+              </h6>
+              <div className="table-responsive">
+                <table className="table table-sm table-bordered mb-0">
+                  <tbody>
+                    <tr>
+                      <td className="fw-bold" style={{ width: '20%' }}>Name:</td>
+                      <td style={{ width: '30%' }}>{receiptData.student_name}</td>
+                      <td className="fw-bold" style={{ width: '20%' }}>Roll Number:</td>
+                      <td style={{ width: '30%' }}>{receiptData.roll_number}</td>
+                    </tr>
+                    <tr>
+                      <td className="fw-bold">Class:</td>
+                      <td>{receiptData.grade_name} {receiptData.division_name}</td>
+                      <td className="fw-bold">Parent Mobile:</td>
+                      <td>{receiptData.parent_mobile}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* QR Code or Barcode placeholder */}
-            <div className="text-center mt-4">
-              <div style={{ 
-                width: '100px', 
-                height: '100px', 
-                border: '2px dashed #dee2e6', 
-                margin: '0 auto',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '8px'
-              }}>
-                <small className="text-muted">QR Code</small>
+            {/* Fee Breakdown */}
+            <Card className="border-0 shadow-sm mb-4">
+              <Card.Body className="p-0">
+                <div className="table-responsive">
+                  <table className="table table-sm mb-0">
+                    <thead className="table-light">
+                      <tr>
+                        <th style={{ width: '85%' }}>Description</th>
+                        <th style={{ width: '15%' }} className="text-end">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {receiptData.fee_breakdown && receiptData.fee_breakdown.length > 0 ? (
+                        <>
+                          {receiptData.fee_breakdown.map((fee, index) => (
+                            <tr key={fee.id || index}>
+                              <td>
+                                <div className="d-flex align-items-center">
+                                  <i className={`bi ${fee.is_mandatory ? 'bi-check-circle-fill text-success' : 'bi-check-square text-info'} me-2`}></i>
+                                  <div>
+                                    <strong>{fee.name}</strong>
+                                    {fee.description && (
+                                      <div className="text-muted small">{fee.description}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="text-end fw-bold">
+                                {formatCurrency(fee.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : (
+                        <tr>
+                          <td>
+                            <div className="d-flex align-items-center">
+                              <i className="bi bi-check-circle-fill text-success me-2"></i>
+                              <div>
+                                <strong>{receiptData.category_name || 'Fee Payment'}</strong>
+                                {receiptData.remarks && (
+                                  <div className="text-muted small">{receiptData.remarks}</div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="text-end fw-bold">
+                            {formatCurrency(receiptData.amount)}
+                          </td>
+                        </tr>
+                      )}
+                      <tr className="table-success">
+                        <td className="fw-bold fs-5">Total Amount</td>
+                        <td className="text-end fw-bold fs-5">
+                          {formatCurrency(receiptData.amount)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </Card.Body>
+            </Card>
+
+            {/* Payment Information */}
+            <div className="mb-4">
+              <h6 className="mb-3 text-success">
+                <i className="bi bi-credit-card me-2"></i>
+                Payment Information
+              </h6>
+              <div className="table-responsive">
+                <table className="table table-sm table-bordered mb-0">
+                  <tbody>
+                    <tr>
+                      <td className="fw-bold" style={{ width: '25%' }}>Payment Method:</td>
+                      <td style={{ width: '25%' }}>
+                        <i className={`bi ${getPaymentMethodIcon(receiptData.payment_method)} me-1`}></i>
+                        {receiptData.payment_method.toUpperCase()}
+                      </td>
+                      <td className="fw-bold" style={{ width: '25%' }}>Payment Date & Time:</td>
+                      <td style={{ width: '25%' }}>{formatDate(receiptData.collection_date)} at {formatTime(receiptData.created_at)}</td>
+                    </tr>
+                    {(receiptData.payment_reference || receiptData.transaction_id || receiptData.reference_number) && (
+                      <tr>
+                        <td className="fw-bold">Reference:</td>
+                        <td colSpan="3">
+                          {receiptData.payment_reference && (
+                            <span className="me-3">
+                              <strong>Payment Ref:</strong> {receiptData.payment_reference}
+                            </span>
+                          )}
+                          {receiptData.transaction_id && (
+                            <span className="me-3">
+                              <strong>Txn ID:</strong> {receiptData.transaction_id}
+                            </span>
+                          )}
+                          {receiptData.reference_number && (
+                            <span>
+                              <strong>Ref No:</strong> {receiptData.reference_number}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <small className="text-muted mt-2 d-block">Scan for verification</small>
+            </div>
+
+            {/* Collection Information */}
+            <div className="mb-4">
+              <h6 className="mb-3 text-info">
+                <i className="bi bi-person-badge me-2"></i>
+                Collection Information
+              </h6>
+              <div className="table-responsive">
+                <table className="table table-sm table-bordered mb-0">
+                  <tbody>
+                    <tr>
+                      <td className="fw-bold" style={{ width: '20%' }}>Collected By:</td>
+                      <td style={{ width: '30%' }}>{receiptData.collected_by_staff_name}</td>
+                      <td className="fw-bold" style={{ width: '20%' }}>Collection Date:</td>
+                      <td style={{ width: '30%' }}>{formatDate(receiptData.collection_date)}</td>
+                    </tr>
+                    {receiptData.is_verified && receiptData.verified_by_admin_name && (
+                      <tr>
+                        <td className="fw-bold">Verified By:</td>
+                        <td colSpan="3">{receiptData.verified_by_admin_name}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center pt-3 border-top">
+              <p className="text-muted mb-0 small">
+                <strong>Important:</strong> This is a computer-generated receipt and does not require a signature.
+              </p>
             </div>
           </div>
         </div>
@@ -317,8 +436,8 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
           Close
         </Button>
         <Button 
-          variant="primary" 
-          onClick={handlePrintClick}
+          variant="outline-primary" 
+          onClick={handlePrintInNewWindow}
           disabled={!isContentReady}
         >
           <i className="bi bi-printer me-2"></i>

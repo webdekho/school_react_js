@@ -213,9 +213,7 @@ class Announcement_model extends CI_Model {
                     'announcement_id' => $announcement_id,
                     'recipient_type' => $recipient['type'],
                     'recipient_id' => $recipient['id'],
-                    'recipient_name' => $recipient['name'],
-                    'recipient_mobile' => $contact_info['mobile'],
-                    'recipient_email' => $contact_info['email'],
+                    'recipient_contact' => $contact_info['mobile'] ?: $contact_info['email'],
                     'channel' => $channel,
                     'status' => 'pending',
                     'created_at' => date('Y-m-d H:i:s'),
@@ -269,7 +267,8 @@ class Announcement_model extends CI_Model {
                 
             case 'grade':
                 if (!empty($announcement['target_ids'])) {
-                    $this->db->select('DISTINCT p.id, p.name, "parent" as type');
+                    $this->db->distinct();
+                    $this->db->select('p.id, p.name, "parent" as type');
                     $this->db->from('parents p');
                     $this->db->join('students s', 'p.id = s.parent_id');
                     $this->db->where_in('s.grade_id', $announcement['target_ids']);
@@ -282,20 +281,6 @@ class Announcement_model extends CI_Model {
                 }
                 break;
                 
-            case 'division':
-                if (!empty($announcement['target_ids'])) {
-                    $this->db->select('DISTINCT p.id, p.name, "parent" as type');
-                    $this->db->from('parents p');
-                    $this->db->join('students s', 'p.id = s.parent_id');
-                    $this->db->where_in('s.division_id', $announcement['target_ids']);
-                    $this->db->where('p.is_active', 1);
-                    $this->db->where('s.is_active', 1);
-                    $parents = $this->db->get()->result_array();
-                    foreach ($parents as $parent) {
-                        $recipients[] = ['id' => $parent['id'], 'type' => 'parent', 'name' => $parent['name']];
-                    }
-                }
-                break;
                 
             case 'parent':
                 if (!empty($announcement['target_ids'])) {
@@ -323,7 +308,8 @@ class Announcement_model extends CI_Model {
                 
             case 'fee_due':
                 // Get parents with students having pending fees
-                $this->db->select('DISTINCT p.id, p.name, "parent" as type');
+                $this->db->distinct();
+                $this->db->select('p.id, p.name, "parent" as type');
                 $this->db->from('parents p');
                 $this->db->join('students s', 'p.id = s.parent_id');
                 $this->db->join('student_fee_assignments sfa', 's.id = sfa.student_id');

@@ -2125,14 +2125,16 @@ class Admin extends API_Controller {
                     'is_direct_payment' => 'integer',
                     'fee_category_id' => 'integer',
                     'direct_fee_description' => 'max_length[255]',
-                    'direct_fee_due_date' => 'regex_match[/^\d{4}-\d{2}-\d{2}$/]'
+                    'direct_fee_due_date' => 'regex_match[/^\d{4}-\d{2}-\d{2}$/]',
+                    // Optional fees
+                    'optional_fees' => 'array'
                 ]);
                 
                 if (!$input) return;
                 
-                // Validate that either we have an assignment ID or it's a direct payment with required fields
-                if (empty($input['student_fee_assignment_id']) && empty($input['is_direct_payment'])) {
-                    $this->send_error('Either student_fee_assignment_id or is_direct_payment must be provided', 400);
+                // Validate that either we have an assignment ID, optional fees, or it's a direct payment
+                if (empty($input['student_fee_assignment_id']) && empty($input['is_direct_payment']) && empty($input['optional_fees'])) {
+                    $this->send_error('Either student_fee_assignment_id, optional_fees, or is_direct_payment must be provided', 400);
                     return;
                 }
                 
@@ -2236,6 +2238,39 @@ class Admin extends API_Controller {
         $this->send_response([
             'data' => $assignments,
             'total' => count($assignments)
+        ]);
+    }
+    
+    // Get available optional fees for a student
+    public function available_optional_fees($student_id) {
+        if ($this->input->method() !== 'get') {
+            $this->send_error('Method not allowed', 405);
+            return;
+        }
+        
+        if (!$this->require_permission('fees')) {
+            return;
+        }
+        
+        if (!$student_id) {
+            $this->send_error('Student ID required', 400);
+            return;
+        }
+        
+        $academic_year_id = $this->input->get('academic_year_id');
+        $grade_id = $this->input->get('grade_id');
+        
+        if (!$grade_id) {
+            $this->send_error('grade_id is required', 400);
+            return;
+        }
+        
+        $this->load->model('Fee_structure_model');
+        $available_fees = $this->Fee_structure_model->get_available_optional_fees($student_id, $academic_year_id, $grade_id);
+        
+        $this->send_response([
+            'data' => $available_fees,
+            'total' => count($available_fees)
         ]);
     }
     
@@ -2656,16 +2691,6 @@ class Admin extends API_Controller {
                 $data = $this->db->get('grades')->result_array();
                 break;
                 
-            case 'divisions':
-                $grade_id = $this->input->get('grade_id');
-                $this->db->select('id, name');
-                $this->db->where('is_active', 1);
-                if ($grade_id) {
-                    $this->db->where('grade_id', $grade_id);
-                }
-                $this->db->order_by('name');
-                $data = $this->db->get('divisions')->result_array();
-                break;
                 
             case 'parents':
                 $search = $this->input->get('search');

@@ -48,8 +48,8 @@ class API_Controller extends CI_Controller {
         if (in_array($this->uri->segment(3), ['staff-wallets', 'wallet-statistics', 'staff-wallet-ledger', 'process-withdrawal', 'clear-wallet-balance'])) {
             $this->user = ['id' => 1, 'user_type' => 'admin']; // Mock admin user for debugging
             $this->user_type = 'admin';
-            return; // Skip authentication for these endpoints
         }
+        
         
         // Temporarily allow access to debug_direct_payment for debugging
         if ($this->uri->segment(3) === 'debug_direct_payment') {

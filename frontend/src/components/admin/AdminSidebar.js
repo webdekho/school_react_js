@@ -101,12 +101,6 @@ const AdminSidebar = ({ show, collapsed, onToggleCollapse, onClose }) => {
       permission: 'reports'
     },
     {
-      path: '/admin/audit-logs',
-      icon: 'bi-journal-text',
-      label: 'Audit Logs',
-      permission: 'audit_logs'
-    },
-    {
       path: '/admin/system-settings',
       icon: 'bi-gear',
       label: 'System Settings',

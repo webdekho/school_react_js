@@ -32,6 +32,20 @@ class Fee_collection_model extends CI_Model {
                 $data['transaction_id'] = null;
             }
             
+            // Handle optional fees - create assignments for them
+            if (!empty($data['optional_fees']) && is_array($data['optional_fees'])) {
+                $this->load->model('Fee_structure_model');
+                
+                foreach ($data['optional_fees'] as $optional_fee) {
+                    // Create assignment for optional fee
+                    $assignment_id = $this->Fee_structure_model->assign_fee_to_student($data['student_id'], $optional_fee['fee_structure_id']);
+                    
+                    if ($assignment_id) {
+                        log_message('debug', 'Created optional fee assignment: ' . $assignment_id . ' for student: ' . $data['student_id']);
+                    }
+                }
+            }
+            
             // For direct payments, create a minimal fee structure first
             if (!empty($data['is_direct_payment']) && !empty($data['fee_category_id'])) {
                 log_message('debug', 'Processing direct payment');
@@ -88,6 +102,17 @@ class Fee_collection_model extends CI_Model {
                 $data['student_fee_assignment_id'] = $this->db->insert_id();
             }
             
+            // Store selected fee information in remarks for receipt breakdown
+            $selected_fee_info = [];
+            if (!empty($data['student_fee_assignment_id'])) {
+                $selected_fee_info[] = 'mandatory:' . $data['student_fee_assignment_id'];
+            }
+            if (!empty($data['optional_fees']) && is_array($data['optional_fees'])) {
+                foreach ($data['optional_fees'] as $optional_fee) {
+                    $selected_fee_info[] = 'optional:' . $optional_fee['fee_structure_id'];
+                }
+            }
+            
             // Clean up fields that don't belong in fee_collections table
             $clean_data = $data;
             unset($clean_data['is_direct_payment']);
@@ -98,6 +123,11 @@ class Fee_collection_model extends CI_Model {
             unset($clean_data['collected_by_staff_id']); 
             unset($clean_data['payment_reference']); // This field doesn't exist
             unset($clean_data['transaction_id']); // This field doesn't exist
+            
+            // Store selected fee information in remarks
+            if (!empty($selected_fee_info)) {
+                $clean_data['remarks'] = 'SELECTED_FEES:' . implode(',', $selected_fee_info) . ($clean_data['remarks'] ? '|' . $clean_data['remarks'] : '');
+            }
             
             // Keep only the most basic fields that should exist
             $basic_fields = [
@@ -125,9 +155,35 @@ class Fee_collection_model extends CI_Model {
             }
             $collection_id = $this->db->insert_id();
             
-            // Update student fee assignment (now guaranteed to have an ID)
+            // Update student fee assignments
             if (!empty($data['student_fee_assignment_id'])) {
                 $this->update_fee_assignment_after_payment($data['student_fee_assignment_id'], $data['amount']);
+            }
+            
+            // Update optional fee assignments
+            if (!empty($data['optional_fees']) && is_array($data['optional_fees'])) {
+                $this->load->model('Fee_structure_model');
+                
+                // Get the latest assignments for the student (the ones we just created)
+                $this->db->select('id, fee_structure_id');
+                $this->db->from('student_fee_assignments');
+                $this->db->where('student_id', $data['student_id']);
+                $this->db->where_in('fee_structure_id', array_column($data['optional_fees'], 'fee_structure_id'));
+                $this->db->order_by('id', 'DESC');
+                $this->db->limit(count($data['optional_fees']));
+                $recent_assignments = $this->db->get()->result_array();
+                
+                // Update each optional fee assignment
+                foreach ($recent_assignments as $assignment) {
+                    $optional_fee = array_filter($data['optional_fees'], function($fee) use ($assignment) {
+                        return $fee['fee_structure_id'] == $assignment['fee_structure_id'];
+                    });
+                    
+                    if (!empty($optional_fee)) {
+                        $optional_fee = array_values($optional_fee)[0];
+                        $this->update_fee_assignment_after_payment($assignment['id'], $optional_fee['amount']);
+                    }
+                }
             }
             
             // Update staff wallet when collection is made
@@ -468,9 +524,146 @@ class Fee_collection_model extends CI_Model {
         if ($result) {
             $result['reference_number'] = $result['payment_reference'] ?? null;
             $result['payment_reference'] = $result['payment_reference'] ?? null;
+            
+            // Get detailed fee breakdown for this collection
+            $result['fee_breakdown'] = $this->get_fee_breakdown_for_collection($id);
         }
         
         return $result;
+    }
+    
+    /**
+     * Get detailed fee breakdown for a collection
+     */
+    public function get_fee_breakdown_for_collection($collection_id) {
+        $breakdown = [];
+        
+        // Get the collection details
+        $this->db->select('student_id, amount, collection_date, fee_type_id, created_at, remarks');
+        $this->db->from('fee_collections');
+        $this->db->where('id', $collection_id);
+        $collection = $this->db->get()->row_array();
+        
+        if (!$collection) {
+            return $breakdown;
+        }
+        
+        // Check if this is a direct payment (no specific fee type)
+        if (empty($collection['fee_type_id'])) {
+            // For direct payments, create a generic breakdown
+            $breakdown[] = [
+                'id' => 'direct',
+                'name' => 'Fee Payment',
+                'description' => 'Direct fee payment',
+                'amount' => $collection['amount'],
+                'is_mandatory' => 1,
+                'type' => 'Payment'
+            ];
+            return $breakdown;
+        }
+        
+        // Parse selected fees from remarks
+        $selected_fees = [];
+        if (!empty($collection['remarks']) && strpos($collection['remarks'], 'SELECTED_FEES:') === 0) {
+            $parts = explode('|', $collection['remarks']);
+            $selected_fees_part = $parts[0];
+            $selected_fees_part = str_replace('SELECTED_FEES:', '', $selected_fees_part);
+            $selected_fees = explode(',', $selected_fees_part);
+        }
+        
+        if (empty($selected_fees)) {
+            // Fallback: create a generic breakdown
+            $breakdown[] = [
+                'id' => 'collection_' . $collection_id,
+                'name' => 'Fee Payment',
+                'description' => 'Fee collection payment',
+                'amount' => $collection['amount'],
+                'is_mandatory' => 1,
+                'type' => 'Payment'
+            ];
+            return $breakdown;
+        }
+        
+        // Get specific fee assignments that were selected
+        $assignment_ids = [];
+        $fee_structure_ids = [];
+        
+        foreach ($selected_fees as $fee_info) {
+            $parts = explode(':', $fee_info);
+            if (count($parts) === 2) {
+                $type = $parts[0];
+                $id = $parts[1];
+                
+                if ($type === 'mandatory') {
+                    $assignment_ids[] = $id;
+                } elseif ($type === 'optional') {
+                    $fee_structure_ids[] = $id;
+                }
+            }
+        }
+        
+        // Get mandatory fee assignments
+        if (!empty($assignment_ids)) {
+            $this->db->select('
+                sfa.id as assignment_id,
+                sfa.total_amount,
+                sfa.paid_amount,
+                sfa.pending_amount,
+                fs.amount as fee_amount,
+                fs.description,
+                fc.name as category_name,
+                fc.description as category_description,
+                fs.is_mandatory,
+                sfa.status
+            ');
+            $this->db->from('student_fee_assignments sfa');
+            $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id');
+            $this->db->join('fee_categories fc', 'fs.fee_category_id = fc.id');
+            $this->db->where_in('sfa.id', $assignment_ids);
+            
+            $assignments = $this->db->get()->result_array();
+            
+            foreach ($assignments as $assignment) {
+                $breakdown[] = [
+                    'id' => $assignment['assignment_id'],
+                    'name' => $assignment['category_name'],
+                    'description' => $assignment['description'] ?: $assignment['category_description'],
+                    'amount' => $assignment['paid_amount'],
+                    'is_mandatory' => $assignment['is_mandatory'],
+                    'type' => $assignment['is_mandatory'] ? 'Mandatory' : 'Optional'
+                ];
+            }
+        }
+        
+        // Get optional fee structures
+        if (!empty($fee_structure_ids)) {
+            $this->db->select('
+                fs.id as fee_structure_id,
+                fs.amount as fee_amount,
+                fs.description,
+                fc.name as category_name,
+                fc.description as category_description,
+                fs.is_mandatory
+            ');
+            $this->db->from('fee_structures fs');
+            $this->db->join('fee_categories fc', 'fs.fee_category_id = fc.id');
+            $this->db->where_in('fs.id', $fee_structure_ids);
+            
+            $fee_structures = $this->db->get()->result_array();
+            
+            foreach ($fee_structures as $fee_structure) {
+                $breakdown[] = [
+                    'id' => 'optional_' . $fee_structure['fee_structure_id'],
+                    'name' => $fee_structure['category_name'],
+                    'description' => $fee_structure['description'] ?: $fee_structure['category_description'],
+                    'amount' => $fee_structure['fee_amount'],
+                    'is_mandatory' => $fee_structure['is_mandatory'],
+                    'type' => $fee_structure['is_mandatory'] ? 'Mandatory' : 'Optional'
+                ];
+            }
+        }
+        
+        return $breakdown;
     }
     
     public function verify_collection($collection_id, $admin_id) {
