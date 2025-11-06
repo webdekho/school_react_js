@@ -16,12 +16,23 @@ class ApiService {
       },
     });
 
-    // Request interceptor to add auth token
+    // Request interceptor to add auth token and route staff requests
     this.api.interceptors.request.use(
       (config) => {
         const token = localStorage.getItem('auth_token');
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+          
+          // Route admin endpoints to staff endpoints for staff users
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.user_type === 'staff' && config.url && config.url.startsWith('/api/admin')) {
+              config.url = config.url.replace('/api/admin', '/api/staff');
+              console.log('Routing staff request:', config.url);
+            }
+          } catch (e) {
+            // Token parsing failed, continue with original URL
+          }
         }
         return config;
       },
@@ -60,8 +71,8 @@ class ApiService {
     return response.data;
   }
 
-  async post(url, data) {
-    const response = await this.api.post(url, data);
+  async post(url, data, config = {}) {
+    const response = await this.api.post(url, data, config);
     return response.data;
   }
 
@@ -89,6 +100,42 @@ class ApiService {
     return response.data;
   }
 
+  async uploadStudentDocument(formData) {
+    const response = await this.api.post('/api/admin/upload_student_document', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  async uploadParentDocument(formData) {
+    const response = await this.api.post('/api/admin/upload_parent_document', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  async uploadSyllabusDocument(formData) {
+    const response = await this.api.post('/api/admin/upload_syllabus_document', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  async uploadStaffPhoto(formData) {
+    const response = await this.api.post('/api/admin/upload_staff_photo', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
   async deleteAnnouncementAttachment(filepath) {
     const response = await this.api.delete('api/admin/delete_announcement_attachment', {
       data: { filepath }
@@ -98,3 +145,4 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
+export default apiService;

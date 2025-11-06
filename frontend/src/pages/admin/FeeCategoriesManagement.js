@@ -229,10 +229,10 @@ const FeeCategoriesManagement = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h4 className="mb-0">
-            <i className="bi bi-tags me-2"></i>
+          <h5 className="mb-0 fw-semibold" style={{ fontSize: '1.1rem' }}>
+            <i className="bi bi-tags me-2" style={{ fontSize: '1rem' }}></i>
             Fee Categories Management
-          </h4>
+          </h5>
           <small className="text-muted">
             <i className="bi bi-calendar-range me-1"></i>
             {getFormattedAcademicYear()}
@@ -365,17 +365,10 @@ const FeeCategoriesManagement = () => {
       {/* Add/Edit Category Modal */}
       <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-category text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-tags fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">{editingCategory ? 'Edit Fee Category' : 'Add New Fee Category'}</h5>
-                <small className="opacity-75">
-                  {editingCategory ? 'Update category information' : 'Create a new fee category for organizing fees'}
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-category text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-tags me-2"></i>
+              <span>{editingCategory ? 'Edit Fee Category' : 'Add New Fee Category'}</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleSubmit}>

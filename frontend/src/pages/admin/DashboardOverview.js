@@ -2,16 +2,21 @@ import React from 'react';
 import { Row, Col, Card } from 'react-bootstrap';
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 /**
  * Dashboard overview component with statistics and metrics
  */
 const DashboardOverview = () => {
+  const { user } = useAuth();
+  
   const { data: stats, isLoading, error } = useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', user?.user_type],
     queryFn: async () => {
       try {
-        const response = await apiService.get('/api/admin/dashboard');
+        // Determine the correct endpoint based on user type
+        const endpoint = user?.user_type === 'staff' ? '/api/staff/dashboard' : '/api/admin/dashboard';
+        const response = await apiService.get(endpoint);
         return response.data;
       } catch (error) {
         console.error('Dashboard API error:', error);
@@ -27,6 +32,7 @@ const DashboardOverview = () => {
     },
     retry: 2,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!user, // Only run query when user is available
   });
 
   if (isLoading) {

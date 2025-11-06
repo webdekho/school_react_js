@@ -197,12 +197,17 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
     });
   };
 
+  // Only log and show warnings when modal is actually being shown
   if (!receiptData) {
-    console.log('ReceiptModal: No receipt data provided');
+    if (show) {
+      console.log('ReceiptModal: No receipt data provided');
+    }
     return null;
   }
   
-  console.log('ReceiptModal: Received receipt data:', receiptData);
+  if (show) {
+    console.log('ReceiptModal: Received receipt data:', receiptData);
+  }
 
   return (
     <Modal show={show} onHide={onHide} size="lg" centered>
@@ -300,24 +305,45 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
                     <tbody>
                       {receiptData.fee_breakdown && receiptData.fee_breakdown.length > 0 ? (
                         <>
-                          {receiptData.fee_breakdown.map((fee, index) => (
-                            <tr key={fee.id || index}>
+                          {receiptData.fee_breakdown.length === 1 ? (
+                            // Single fee item - show the actual collected amount
+                            <tr key={receiptData.fee_breakdown[0].id || 0}>
                               <td>
                                 <div className="d-flex align-items-center">
-                                  <i className={`bi ${fee.is_mandatory ? 'bi-check-circle-fill text-success' : 'bi-check-square text-info'} me-2`}></i>
+                                  <i className={`bi ${receiptData.fee_breakdown[0].is_mandatory ? 'bi-check-circle-fill text-success' : 'bi-check-square text-info'} me-2`}></i>
                                   <div>
-                                    <strong>{fee.name}</strong>
-                                    {fee.description && (
-                                      <div className="text-muted small">{fee.description}</div>
+                                    <strong>{receiptData.fee_breakdown[0].name}</strong>
+                                    {receiptData.fee_breakdown[0].description && (
+                                      <div className="text-muted small">{receiptData.fee_breakdown[0].description}</div>
                                     )}
                                   </div>
                                 </div>
                               </td>
                               <td className="text-end fw-bold">
-                                {formatCurrency(fee.amount)}
+                                {formatCurrency(receiptData.amount)}
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            // Multiple fee items - show individual amounts (for multiple fee collections)
+                            receiptData.fee_breakdown.map((fee, index) => (
+                              <tr key={fee.id || index}>
+                                <td>
+                                  <div className="d-flex align-items-center">
+                                    <i className={`bi ${fee.is_mandatory ? 'bi-check-circle-fill text-success' : 'bi-check-square text-info'} me-2`}></i>
+                                    <div>
+                                      <strong>{fee.name}</strong>
+                                      {fee.description && (
+                                        <div className="text-muted small">{fee.description}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="text-end fw-bold">
+                                  {formatCurrency(fee.collected_amount || fee.amount)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </>
                       ) : (
                         <tr>
@@ -405,7 +431,7 @@ const ReceiptModal = ({ show, onHide, receiptData }) => {
                   <tbody>
                     <tr>
                       <td className="fw-bold" style={{ width: '20%' }}>Collected By:</td>
-                      <td style={{ width: '30%' }}>{receiptData.collected_by_staff_name}</td>
+                      <td style={{ width: '30%' }}>{receiptData.collected_by_name || 'Unknown'}</td>
                       <td className="fw-bold" style={{ width: '20%' }}>Collection Date:</td>
                       <td style={{ width: '30%' }}>{formatDate(receiptData.collection_date)}</td>
                     </tr>

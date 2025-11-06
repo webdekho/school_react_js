@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, Button, Table, Modal, Form, Alert, Badge, Spinner, Row, Col, InputGroup } from 'react-bootstrap';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Typeahead } from 'react-bootstrap-typeahead';
-import 'react-bootstrap-typeahead/css/Typeahead.css';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../../services/api';
 import toast from 'react-hot-toast';
 import Pagination from '../../components/common/Pagination';
 import { useAcademicYear } from '../../contexts/AcademicYearContext';
+import 'react-bootstrap-typeahead/css/Typeahead.css';
 
 const FeeStructuresManagement = () => {
   const { selectedAcademicYear, getFormattedAcademicYear } = useAcademicYear();
@@ -123,7 +123,26 @@ const FeeStructuresManagement = () => {
     cacheTime: 10 * 60 * 1000 // 10 minutes
   });
 
-  // Update selected categories when editing and categories data becomes available
+  // Fetch grades for dropdown - simplified and reliable
+  const { data: gradesResponse, isLoading: gradesLoading, error: gradesError } = useQuery({
+    queryKey: ['grades_dropdown'],
+    queryFn: async () => {
+      const response = await apiService.get('/api/admin/grades?limit=100&offset=0');
+      return response.data;
+    },
+    staleTime: 5 * 60 * 1000 // Cache for 5 minutes
+  });
+  
+  // Process grades data
+  const allGrades = React.useMemo(() => {
+    const gradesList = gradesResponse?.data || [];
+    return [
+      { id: 'global', name: 'Global (All Grades)' },
+      ...gradesList
+    ];
+  }, [gradesResponse]);
+
+  // Update selected categories and grades when editing
   useEffect(() => {
     if (editingStructure && categoriesData?.data && formData.fee_category_id && selectedCategories.length === 0) {
       const category = categoriesData.data.find(cat => cat.id == formData.fee_category_id);
@@ -133,41 +152,30 @@ const FeeStructuresManagement = () => {
     }
   }, [categoriesData, editingStructure, formData.fee_category_id, selectedCategories.length]);
 
-  // Fetch grades for dropdown
-  const { data: gradesData } = useQuery({
-    queryKey: ['grades_dropdown'],
-    queryFn: async () => {
-      const response = await apiService.get('/api/admin/grades?limit=100&offset=0');
-      console.log('Grades API response:', response);
-      return response.data;
-    }
-  });
-
-  // Remove divisions query - no longer needed
-
-  // Update selected grades when data becomes available
+  // Update selected grades when editing
   useEffect(() => {
-    if (editingStructure && gradesData?.data && formData.grade_id && selectedGrades.length === 0) {
-      const grade = gradesData.data.find(g => g.id == formData.grade_id);
+    if (editingStructure && allGrades.length > 0 && formData.grade_id && selectedGrades.length === 0) {
+      const grade = allGrades.find(g => g.id == formData.grade_id || (formData.grade_id === 'global' && g.id === 'global'));
       if (grade) {
         setSelectedGrades([grade]);
       }
     }
-  }, [gradesData, editingStructure, formData.grade_id, selectedGrades.length]);
+  }, [allGrades, editingStructure, formData.grade_id, selectedGrades.length]);
+  
+
+  // Remove divisions query - no longer needed
+
 
   // Remove divisions useEffect - no longer needed
 
   // Fetch fee structures with pagination
   const { data: structuresResponse, isLoading, error } = useQuery({
-    queryKey: ['fee_structures', currentPage, itemsPerPage, debouncedSearchTerm, filterGrade, filterCategory, selectedAcademicYear?.id],
+    queryKey: ['fee_structures', currentPage, itemsPerPage, debouncedSearchTerm, filterGrade, filterCategory],
     queryFn: async () => {
-      if (!selectedAcademicYear?.id) return { data: [], total: 0 };
-      
       const offset = (currentPage - 1) * itemsPerPage;
       const params = new URLSearchParams({
         limit: itemsPerPage.toString(),
-        offset: offset.toString(),
-        academic_year_id: selectedAcademicYear.id.toString()
+        offset: offset.toString()
       });
       
       if (debouncedSearchTerm) {
@@ -277,9 +285,15 @@ const FeeStructuresManagement = () => {
       // Convert is_mandatory to boolean - backend returns "0" or "1" as strings
       const isMandatory = structure.is_mandatory === "1" || structure.is_mandatory === 1;
       
+      // Set form data - handle grade_id properly
+      let gradeIdValue = structure.grade_id;
+      if (structure.grade_id === null || structure.grade_id === '') {
+        gradeIdValue = 'global'; // Use 'global' for UI, convert to null when submitting
+      }
+      
       setFormData({
         fee_category_id: structure.fee_category_id || '',
-        grade_id: structure.grade_id || '',
+        grade_id: gradeIdValue,
         amount: structure.amount || '',
         is_mandatory: isMandatory,
         due_date: structure.due_date || '',
@@ -290,25 +304,9 @@ const FeeStructuresManagement = () => {
         semester: ''  // Always default to both semesters
       });
       
-      // Reset selections first
+      // Reset selections
       setSelectedCategories([]);
       setSelectedGrades([]);
-      
-      // Set selected category for typeahead (will be set by useEffect if data is not loaded yet)
-      if (structure.fee_category_id && categoriesData?.data) {
-        const category = categoriesData.data.find(cat => cat.id == structure.fee_category_id);
-        if (category) {
-          setSelectedCategories([category]);
-        }
-      }
-      
-      // Set selected grade for typeahead (will be set by useEffect if data is not loaded yet)
-      if (structure.grade_id && gradesData?.data) {
-        const grade = gradesData.data.find(g => g.id == structure.grade_id);
-        if (grade) {
-          setSelectedGrades([grade]);
-        }
-      }
       
       // Remove division selection logic - no longer needed
     } else {
@@ -398,6 +396,7 @@ const FeeStructuresManagement = () => {
     }
   };
 
+
   // Helper function to get selected category name
   const getSelectedCategoryName = () => {
     if (selectedCategories.length > 0) {
@@ -442,11 +441,15 @@ const FeeStructuresManagement = () => {
   const validateForm = () => {
     const newErrors = {};
     
+    if (!selectedAcademicYear?.id) {
+      newErrors.academic_year = 'Please select an academic year before creating/editing fee structures';
+    }
     if (!formData.fee_category_id) {
       newErrors.fee_category_id = 'Fee category is required';
     }
+    // Grade is still required - either a specific grade or Global (null) must be selected
     if (!formData.grade_id) {
-      newErrors.grade_id = 'Grade is required';
+      newErrors.grade_id = 'Grade selection is required';
     }
     if (!formData.amount || formData.amount <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
@@ -475,7 +478,8 @@ const FeeStructuresManagement = () => {
       ...formData,
       academic_year_id: selectedAcademicYear.id,
       is_mandatory: formData.is_mandatory ? 1 : 0,
-      // grade_id is now mandatory - keep its value as is
+      // Handle grade_id: convert 'global' back to null for backend
+      grade_id: formData.grade_id === 'global' ? null : formData.grade_id,
       // Convert empty strings to null only for optional fields
       late_fee_amount: formData.late_fee_amount || null,
       late_fee_days: formData.late_fee_days || null,
@@ -540,23 +544,15 @@ const FeeStructuresManagement = () => {
     );
   }
 
-  if (!selectedAcademicYear) {
-    return (
-      <Alert variant="warning">
-        <i className="bi bi-exclamation-triangle me-2"></i>
-        Please select an academic year to manage fee structures.
-      </Alert>
-    );
-  }
 
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h4 className="mb-0">
-            <i className="bi bi-currency-rupee me-2"></i>
+          <h5 className="mb-0 fw-semibold" style={{ fontSize: '1.1rem' }}>
+            <i className="bi bi-currency-rupee me-2" style={{ fontSize: '1rem' }}></i>
             Fee Structures Management
-          </h4>
+          </h5>
           <small className="text-muted">
             <i className="bi bi-calendar-range me-1"></i>
             {getFormattedAcademicYear()}
@@ -592,7 +588,7 @@ const FeeStructuresManagement = () => {
                 onChange={(e) => setFilterGrade(e.target.value)}
               >
                 <option value="">All Grades</option>
-                {gradesData?.data?.map((grade) => (
+                {allGrades.filter(g => g.id !== 'global').map((grade) => (
                   <option key={grade.id} value={grade.id}>
                     {grade.name}
                   </option>
@@ -656,7 +652,10 @@ const FeeStructuresManagement = () => {
                         {structure.grade_name ? (
                           <div className="fw-medium">{structure.grade_name}</div>
                         ) : (
-                          <span className="text-muted fst-italic">All Grades</span>
+                          <div className="fw-medium text-primary">
+                            <i className="bi bi-globe me-1"></i>
+                            Global (All Grades)
+                          </div>
                         )}
                       </div>
                     </td>
@@ -755,21 +754,20 @@ const FeeStructuresManagement = () => {
       {/* Add/Edit Structure Modal */}
       <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-structure text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-currency-rupee fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">{editingStructure ? 'Edit Fee Structure' : 'Add New Fee Structure'}</h5>
-                <small className="opacity-75">
-                  {editingStructure ? 'Update structure information' : 'Create a new fee structure for collecting fees'}
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-structure text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-currency-rupee me-2"></i>
+              <span>{editingStructure ? 'Edit Fee Structure' : 'Add New Fee Structure'}</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleSubmit}>
             <Modal.Body className="p-4">
+              {errors.academic_year && (
+                <Alert variant="danger" className="mb-3">
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  {errors.academic_year}
+                </Alert>
+              )}
               <div className="row">
                 <div className="col-md-6 mb-3">
                   <Form.Group>
@@ -777,27 +775,20 @@ const FeeStructuresManagement = () => {
                       <i className="bi bi-tag me-2"></i>Fee Category *
                     </Form.Label>
                     <Typeahead
-                      id="category-typeahead"
-                      labelKey="name"
+                      id="fee-category-typeahead"
                       options={categoriesData?.data || []}
-                      placeholder={categoriesLoading ? 'Loading categories...' : 
-                                 categoriesError ? 'Error loading categories - trying again...' : 
-                                 !categoriesData?.data?.length ? 'No categories available' :
-                                 'Search and select a category...'}
+                      labelKey="name"
+                      placeholder="Search and select a fee category..."
                       selected={selectedCategories}
                       onChange={handleCategoryChange}
                       disabled={categoriesLoading}
-                      className={errors.fee_category_id ? 'is-invalid' : ''}
-                      emptyLabel={!categoriesData?.data?.length ? 'No categories available' : 'No matches found'}
-                      filterBy={['name', 'description']}
+                      isInvalid={!!errors.fee_category_id}
+                      clearButton
                       highlightOnlyResult
-                      selectHintOnEnter
                       renderMenuItemChildren={(option) => (
                         <div>
                           <strong>{option.name}</strong>
-                          {option.description && (
-                            <div><small className="text-muted">{option.description}</small></div>
-                          )}
+                          {option.description && <div className="text-muted small">{option.description}</div>}
                         </div>
                       )}
                     />
@@ -862,24 +853,19 @@ const FeeStructuresManagement = () => {
                     </Form.Label>
                     <Typeahead
                       id="grade-typeahead"
+                      options={allGrades}
                       labelKey="name"
-                      options={gradesData?.data || []}
-                      placeholder={gradesData ? "Search and select a grade..." : "Loading grades..."}
+                      placeholder="Search and select a grade..."
                       selected={selectedGrades}
                       onChange={handleGradeChange}
-                      disabled={!gradesData?.data?.length}
-                      className={errors.grade_id ? 'is-invalid' : ''}
-                      emptyLabel={gradesData?.data?.length === 0 ? 'No grades available' : 'No matches found'}
-                      filterBy={['name']}
-                      highlightOnlyResult
-                      selectHintOnEnter
+                      disabled={gradesLoading}
+                      isInvalid={!!errors.grade_id}
                       clearButton
+                      highlightOnlyResult
                       renderMenuItemChildren={(option) => (
                         <div>
                           <strong>{option.name}</strong>
-                          {option.description && (
-                            <div><small className="text-muted">{option.description}</small></div>
-                          )}
+                          {option.id === 'global' && <div className="text-muted small">Applies to all grades</div>}
                         </div>
                       )}
                     />
@@ -889,7 +875,7 @@ const FeeStructuresManagement = () => {
                       </div>
                     )}
                     <Form.Text className="text-muted">
-                      Select the specific grade for this fee structure
+                      Select a specific grade or choose "Global" to apply to all grades
                     </Form.Text>
                   </Form.Group>
                 </div>

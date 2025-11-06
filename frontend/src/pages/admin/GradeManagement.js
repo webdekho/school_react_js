@@ -363,17 +363,10 @@ const GradeManagement = () => {
       {/* Add/Edit Grade Modal */}
       <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-primary text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-bookmark fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">{editingGrade ? 'Edit Grade' : 'Add New Grade'}</h5>
-                <small className="opacity-75">
-                  {editingGrade ? 'Update grade information' : 'Create a new grade level'}
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-primary text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-bookmark me-2"></i>
+              <span>{editingGrade ? 'Edit Grade' : 'Add New Grade'}</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleSubmit}>

@@ -87,7 +87,7 @@ export const AuthProvider = ({ children }) => {
     const handleTokenExpired = () => {
       // Clear user state when token expires
       setUser(null);
-      toast.error('Your session has expired. Please login again.');
+      // toast.error('Your session has expired. Please login again.');
       console.log('Token expired, redirecting to login');
     };
 
@@ -172,8 +172,15 @@ export const AuthProvider = ({ children }) => {
    * @returns {boolean} Has permission
    */
   const hasPermission = (permission) => {
-    if (!user || !user.permissions) return false;
-    return user.permissions.includes('*') || user.permissions.includes(permission);
+    if (!user || !user.permissions) {
+      return false;
+    }
+    
+    const hasWildcard = user.permissions.includes('*');
+    const hasSpecific = user.permissions.includes(permission);
+    const result = hasWildcard || hasSpecific;
+    
+    return result;
   };
 
   /**

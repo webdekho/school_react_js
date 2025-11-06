@@ -579,10 +579,10 @@ const ReportsManagement = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h4 className="mb-0">
-            <i className="bi bi-graph-up me-2"></i>
+          <h5 className="mb-0 fw-semibold" style={{ fontSize: '1.1rem' }}>
+            <i className="bi bi-graph-up me-2" style={{ fontSize: '1rem' }}></i>
             Reports & Analytics
-          </h4>
+          </h5>
           <small className="text-muted">
             Generate comprehensive reports and analytics
           </small>

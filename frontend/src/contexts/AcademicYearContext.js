@@ -14,17 +14,32 @@ export const useAcademicYear = () => {
 };
 
 export const AcademicYearProvider = ({ children }) => {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedAcademicYear, setSelectedAcademicYear] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Determine the correct endpoint based on user type
+  const getAcademicYearEndpoint = () => {
+    if (!user) return '/api/admin/academic_years_current';
+    
+    switch(user.user_type) {
+      case 'parent':
+        return '/api/parent/academic_year';
+      case 'staff':
+        return '/api/staff/academic_year';
+      default:
+        return '/api/admin/academic_years_current';
+    }
+  };
+
   // Fetch current academic year - only if authenticated
   const { data: currentYear } = useQuery({
-    queryKey: ['current-academic-year'],
+    queryKey: ['current-academic-year', user?.user_type],
     queryFn: async () => {
       try {
-        const response = await apiService.get('/api/admin/academic_years_current');
+        const endpoint = getAcademicYearEndpoint();
+        const response = await apiService.get(endpoint);
         return response.data;
       } catch (error) {
         console.error('Failed to fetch current academic year:', error);

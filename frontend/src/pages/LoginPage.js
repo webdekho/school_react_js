@@ -28,15 +28,16 @@ const LoginPage = () => {
   }, [isAuthenticated, user]);
 
   const getRedirectPath = (userType) => {
-    switch (userType) {
-      case 'admin':
-      case 'staff':
-        return '/admin';
-      case 'parent':
-        return '/parent';
-      default:
-        return '/';
+    // Staff goes to staff dashboard
+    if (userType === 'staff') {
+      return '/staff';
     }
+    // Parent goes to parent dashboard
+    if (userType === 'parent') {
+      return '/parent';
+    }
+    // Everyone else (admin and any other roles) goes to admin
+    return '/admin';
   };
 
   const handleInputChange = (e) => {
@@ -74,8 +75,9 @@ const LoginPage = () => {
 
   // Only redirect if we're actually authenticated AND have user data AND not currently loading
   if (!loading && isAuthenticated && user) {
-    const from = location.state?.from?.pathname || getRedirectPath(user.user_type);
-    return <Navigate to={from} replace />;
+    // Always redirect based on role, ignore previous location to avoid sending staff to admin
+    const to = getRedirectPath(user.user_type);
+    return <Navigate to={to} replace />;
   }
 
   return (
@@ -114,19 +116,18 @@ const LoginPage = () => {
                         <div className="user-type-icon">👨‍👩‍👧‍👦</div>
                         <span>Parent</span>
                       </div>
-                      <div 
-                        className={`user-type-option ${formData.user_type === 'staff' ? 'active' : ''}`}
-                        onClick={() => setFormData(prev => ({ ...prev, user_type: 'staff' }))}
-                      >
-                        <div className="user-type-icon">👨‍🏫</div>
-                        <span>Staff</span>
-                      </div>
+                      
+                      
+                     
+
+
+
                       <div 
                         className={`user-type-option ${formData.user_type === 'admin' ? 'active' : ''}`}
                         onClick={() => setFormData(prev => ({ ...prev, user_type: 'admin' }))}
                       >
                         <div className="user-type-icon">👨‍💼</div>
-                        <span>Admin</span>
+                        <span>Staff</span>
                       </div>
                     </div>
                   </Form.Group>

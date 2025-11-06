@@ -15,10 +15,15 @@ import FeeCategoriesManagement from './FeeCategoriesManagement';
 import FeeStructuresManagement from './FeeStructuresManagement';
 import FeeCollectionManagement from './FeeCollectionManagement';
 import AnnouncementsManagement from './AnnouncementsManagement';
+import AttendanceManagement from './AttendanceManagement';
+import StaffAttendanceManagement from './StaffAttendanceManagement';
 import ComplaintsManagement from './ComplaintsManagement';
 import ReportsManagement from './ReportsManagement';
 import RoleManagement from './RoleManagement';
 import ProfileManagement from './ProfileManagement';
+import VisionStatementsManagement from './VisionStatementsManagement';
+import SubjectManagement from './SubjectManagement';
+import SyllabusManagement from './SyllabusManagement';
 import SystemSettings from './SystemSettings';
 import HelpSupport from './HelpSupport';
 
@@ -109,6 +114,16 @@ const AdminDashboard = () => {
                 <AnnouncementsManagement />
               </PermissionGuard>
             } />
+            <Route path="/attendance" element={
+              <PermissionGuard permission="attendance">
+                <AttendanceManagement />
+              </PermissionGuard>
+            } />
+            <Route path="/staff-attendance" element={
+              <PermissionGuard permission="staff_attendance">
+                <StaffAttendanceManagement />
+              </PermissionGuard>
+            } />
             <Route path="/complaints" element={
               <PermissionGuard permission="complaints">
                 <ComplaintsManagement />
@@ -119,6 +134,21 @@ const AdminDashboard = () => {
                 <Suspense fallback={<div className="text-center py-5"><Spinner animation="border" /></div>}>
                   <StaffWalletManagement />
                 </Suspense>
+              </PermissionGuard>
+            } />
+            <Route path="/vision-statements" element={
+              <PermissionGuard permission="vision_statements">
+                <VisionStatementsManagement />
+              </PermissionGuard>
+            } />
+            <Route path="/subjects" element={
+              <PermissionGuard permission="syllabus">
+                <SubjectManagement />
+              </PermissionGuard>
+            } />
+            <Route path="/syllabus" element={
+              <PermissionGuard permission="syllabus">
+                <SyllabusManagement />
               </PermissionGuard>
             } />
             <Route path="/reports" element={

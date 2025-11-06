@@ -113,10 +113,30 @@ class Fee_collection_model extends CI_Model {
                 }
             }
             
+            // Check which columns exist in fee_collections table
+            $fc_columns = $this->db->list_fields('fee_collections');
+            $has_fee_category_id = in_array('fee_category_id', $fc_columns);
+            $has_fee_type_id = in_array('fee_type_id', $fc_columns);
+            $has_student_fee_assignment_id = in_array('student_fee_assignment_id', $fc_columns);
+            
+            // If this is a pending payment with assignment, extract the fee_category_id from the assignment
+            if ($has_fee_category_id && !empty($data['student_fee_assignment_id']) && empty($data['fee_category_id'])) {
+                // Get the fee structure's category from the assignment
+                $this->db->select('fs.fee_category_id');
+                $this->db->from('student_fee_assignments sfa');
+                $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id');
+                $this->db->where('sfa.id', $data['student_fee_assignment_id']);
+                $assignment_result = $this->db->get()->row_array();
+                
+                if ($assignment_result && !empty($assignment_result['fee_category_id'])) {
+                    $data['fee_category_id'] = $assignment_result['fee_category_id'];
+                    log_message('debug', 'Extracted fee_category_id from assignment: ' . $assignment_result['fee_category_id']);
+                }
+            }
+            
             // Clean up fields that don't belong in fee_collections table
             $clean_data = $data;
             unset($clean_data['is_direct_payment']);
-            unset($clean_data['fee_category_id']);
             unset($clean_data['direct_fee_due_date']);
             unset($clean_data['direct_fee_description']);
             unset($clean_data['reference_number']); 
@@ -129,7 +149,7 @@ class Fee_collection_model extends CI_Model {
                 $clean_data['remarks'] = 'SELECTED_FEES:' . implode(',', $selected_fee_info) . ($clean_data['remarks'] ? '|' . $clean_data['remarks'] : '');
             }
             
-            // Keep only the most basic fields that should exist
+            // Build list of fields that should exist
             $basic_fields = [
                 'student_id',
                 'amount',
@@ -137,12 +157,42 @@ class Fee_collection_model extends CI_Model {
                 'remarks',
                 'receipt_number',
                 'collection_date',
-                'fee_type_id', // Required for foreign key constraint
                 'collected_by' // Required for foreign key constraint
             ];
             
-            // Add required foreign key fields
-            $clean_data['fee_type_id'] = 1; // Use a safe default
+            // Add fee_category_id if column exists and data has it
+            if ($has_fee_category_id && isset($data['fee_category_id'])) {
+                $basic_fields[] = 'fee_category_id';
+            } else {
+                // Remove it if column doesn't exist
+                unset($clean_data['fee_category_id']);
+            }
+            
+            // Add semester if column exists and data has it
+            $has_semester = in_array('semester', $fc_columns);
+            if ($has_semester && isset($data['semester'])) {
+                $basic_fields[] = 'semester';
+            } else {
+                // Remove it if column doesn't exist
+                unset($clean_data['semester']);
+            }
+            
+            // Add fee_type_id if column exists - always required due to foreign key constraint
+            if ($has_fee_type_id) {
+                $basic_fields[] = 'fee_type_id';
+                // Always set fee_type_id (required by foreign key constraint)
+                // Use value from data if provided, otherwise default to 1
+                if (!isset($clean_data['fee_type_id'])) {
+                    $clean_data['fee_type_id'] = $data['fee_type_id'] ?? 1; // Use a safe default
+                }
+            }
+            
+            // Add student_fee_assignment_id if column exists
+            if ($has_student_fee_assignment_id) {
+                $basic_fields[] = 'student_fee_assignment_id';
+            }
+            
+            // Add collected_by staff ID
             $clean_data['collected_by'] = $data['collected_by_staff_id'] ?? 1; // Staff ID who collected
             
             $clean_data = array_intersect_key($clean_data, array_flip($basic_fields));
@@ -190,7 +240,8 @@ class Fee_collection_model extends CI_Model {
             try {
                 if (isset($data['collected_by_staff_id']) || isset($clean_data['collected_by'])) {
                     $staff_id = $data['collected_by_staff_id'] ?? $clean_data['collected_by'];
-                    $this->update_staff_wallet($staff_id, $clean_data['amount'], $collection_id, $clean_data['receipt_number']);
+                    $payment_mode = $data['payment_mode'] ?? $data['payment_method'] ?? $clean_data['payment_method'] ?? null;
+                    $this->update_staff_wallet($staff_id, $clean_data['amount'], $collection_id, $clean_data['receipt_number'], $payment_mode);
                 }
             } catch (Exception $wallet_error) {
                 log_message('error', 'Staff wallet update failed: ' . $wallet_error->getMessage());
@@ -322,26 +373,35 @@ class Fee_collection_model extends CI_Model {
         $employee_id_exists = in_array('employee_id', $staff_columns);
         $has_assignment_id = in_array('student_fee_assignment_id', $fc_columns);
         $has_fee_type_id = in_array('fee_type_id', $fc_columns);
+        $has_fee_category_id = in_array('fee_category_id', $fc_columns);
         
         // Build the base SELECT statement
         $select_parts = [
             'fc.*',
+            'fc.payment_method as payment_mode',
             's.student_name',
             's.roll_number', 
             'g.name as grade_name',
             'd.name as division_name',
-            'staff.name as collected_by_staff_name'
+            'staff.name as collected_by_name',
+            'staff.id as collected_by_id'
         ];
         
-        // Add staff ID based on available column
+        // Add additional staff information
         if ($employee_id_exists) {
-            $select_parts[] = 'staff.employee_id as collected_by_staff_employee_id';
-        } else {
-            $select_parts[] = 'staff.id as collected_by_staff_id';
+            $select_parts[] = 'staff.employee_id as collected_by_employee_id';
         }
         
-        // Add category name based on available joins
-        if ($has_assignment_id && $has_fee_type_id) {
+        // Add category name based on available joins - priority order: direct fee_category_id, assignment category, fee type
+        if ($has_fee_category_id && $has_assignment_id && $has_fee_type_id) {
+            $select_parts[] = 'COALESCE(direct_cat.name, fc_cat.name, ft.name, "Direct Payment") as category_name';
+        } elseif ($has_fee_category_id && $has_assignment_id) {
+            $select_parts[] = 'COALESCE(direct_cat.name, fc_cat.name, "Direct Payment") as category_name';
+        } elseif ($has_fee_category_id && $has_fee_type_id) {
+            $select_parts[] = 'COALESCE(direct_cat.name, ft.name, "Direct Payment") as category_name';
+        } elseif ($has_fee_category_id) {
+            $select_parts[] = 'COALESCE(direct_cat.name, "Direct Payment") as category_name';
+        } elseif ($has_assignment_id && $has_fee_type_id) {
             $select_parts[] = 'COALESCE(fc_cat.name, ft.name, "Direct Payment") as category_name';
         } elseif ($has_assignment_id) {
             $select_parts[] = 'COALESCE(fc_cat.name, "Direct Payment") as category_name';
@@ -357,6 +417,11 @@ class Fee_collection_model extends CI_Model {
         $this->db->join('grades g', 's.grade_id = g.id');
         $this->db->join('divisions d', 's.division_id = d.id');
         $this->db->join('staff', 'fc.collected_by = staff.id', 'left');
+        
+        // Join fee categories directly if fee_category_id exists (for Other Payment/Direct Payment)
+        if ($has_fee_category_id) {
+            $this->db->join('fee_categories direct_cat', 'fc.fee_category_id = direct_cat.id', 'left');
+        }
         
         // Add conditional joins based on available columns
         if ($has_assignment_id) {
@@ -388,17 +453,27 @@ class Fee_collection_model extends CI_Model {
             $this->db->where('s.division_id', $filters['division_id']);
         }
         
-        // Category filter removed - no longer available without fee_structures join
-        // if (!empty($filters['category_id'])) {
-        //     $this->db->where('fs.fee_category_id', $filters['category_id']);
-        // }
+        // Category filter - now works with fee_category_id and assignment-based categories
+        if (!empty($filters['category_id'])) {
+            $this->db->group_start();
+            // Check direct fee_category_id (for Other Payment)
+            if ($has_fee_category_id) {
+                $this->db->or_where('fc.fee_category_id', $filters['category_id']);
+            }
+            // Check assignment-based category (for Pending Payment)
+            if ($has_assignment_id) {
+                $this->db->or_where('fs.fee_category_id', $filters['category_id']);
+            }
+            $this->db->group_end();
+        }
         
         if (!empty($filters['staff_id'])) {
             $this->db->where('fc.collected_by', $filters['staff_id']);
+            log_message('debug', 'Fee_collection_model::get_fee_collections_paginated: Applied staff_id filter: ' . $filters['staff_id']);
         }
         
-        if (!empty($filters['payment_method'])) {
-            $this->db->where('fc.payment_method', $filters['payment_method']);
+        if (!empty($filters['payment_mode'])) {
+            $this->db->where('fc.payment_method', $filters['payment_mode']);
         }
         
         if (!empty($filters['search'])) {
@@ -413,13 +488,25 @@ class Fee_collection_model extends CI_Model {
         $this->db->order_by('fc.id', 'DESC'); // Use ID instead of created_at
         $this->db->limit($limit, $offset);
         
+        log_message('debug', 'Fee_collection_model::get_fee_collections_paginated: Final query: ' . $this->db->get_compiled_select('', false));
         $query = $this->db->get();
         return $query->result_array();
     }
     
     public function count_fee_collections($filters = []) {
+        // Check which columns exist for filtering
+        $fc_columns = $this->db->list_fields('fee_collections');
+        $has_fee_category_id = in_array('fee_category_id', $fc_columns);
+        $has_assignment_id = in_array('student_fee_assignment_id', $fc_columns);
+        
         $this->db->from('fee_collections fc');
         $this->db->join('students s', 'fc.student_id = s.id');
+        
+        // Add joins needed for category filtering
+        if (!empty($filters['category_id']) && $has_assignment_id) {
+            $this->db->join('student_fee_assignments sfa', 'fc.student_fee_assignment_id = sfa.id', 'left');
+            $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id', 'left');
+        }
         
         // Apply same filters as in paginated query
         if (!empty($filters['start_date'])) {
@@ -438,17 +525,27 @@ class Fee_collection_model extends CI_Model {
             $this->db->where('s.division_id', $filters['division_id']);
         }
         
-        // Category filter removed - no longer available without fee_structures join
-        // if (!empty($filters['category_id'])) {
-        //     $this->db->where('fs.fee_category_id', $filters['category_id']);
-        // }
+        // Category filter - now works with fee_category_id and assignment-based categories
+        if (!empty($filters['category_id'])) {
+            $this->db->group_start();
+            // Check direct fee_category_id (for Other Payment)
+            if ($has_fee_category_id) {
+                $this->db->or_where('fc.fee_category_id', $filters['category_id']);
+            }
+            // Check assignment-based category (for Pending Payment)
+            if ($has_assignment_id) {
+                $this->db->or_where('fs.fee_category_id', $filters['category_id']);
+            }
+            $this->db->group_end();
+        }
         
         if (!empty($filters['staff_id'])) {
             $this->db->where('fc.collected_by', $filters['staff_id']);
+            log_message('debug', 'Fee_collection_model::count_fee_collections: Applied staff_id filter: ' . $filters['staff_id']);
         }
         
-        if (!empty($filters['payment_method'])) {
-            $this->db->where('fc.payment_method', $filters['payment_method']);
+        if (!empty($filters['payment_mode'])) {
+            $this->db->where('fc.payment_method', $filters['payment_mode']);
         }
         
         if (!empty($filters['search'])) {
@@ -459,6 +556,7 @@ class Fee_collection_model extends CI_Model {
             $this->db->group_end();
         }
         
+        log_message('debug', 'Fee_collection_model::count_fee_collections: Final count query: ' . $this->db->get_compiled_select('', false));
         return $this->db->count_all_results();
     }
     
@@ -475,7 +573,8 @@ class Fee_collection_model extends CI_Model {
                 s.roll_number,
                 g.name as grade_name,
                 d.name as division_name,
-                staff.name as collected_by_staff_name,
+                staff.name as collected_by_name,
+                staff.id as collected_by_id,
                 COALESCE(fc_cat.name, ft.name, "Direct Payment") as category_name,
                 p.name as parent_name,
                 p.mobile as parent_mobile,
@@ -490,7 +589,8 @@ class Fee_collection_model extends CI_Model {
                 s.roll_number,
                 g.name as grade_name,
                 d.name as division_name,
-                staff.name as collected_by_staff_name,
+                staff.name as collected_by_name,
+                staff.id as collected_by_id,
                 COALESCE(ft.name, "Direct Payment") as category_name,
                 p.name as parent_name,
                 p.mobile as parent_mobile,
@@ -707,17 +807,48 @@ class Fee_collection_model extends CI_Model {
     }
     
     public function get_student_payment_history($student_id) {
-        $this->db->select('fc.*, fc_cat.name as category_name, staff.name as collected_by_name');
+        // Get fee collections with enhanced category information
+        $this->db->select('fc.*, ft.name as fee_type_name, ft.description as fee_description, staff.name as collected_by_name');
         $this->db->from('fee_collections fc');
-        $this->db->join('student_fee_assignments sfa', 'fc.student_fee_assignment_id = sfa.id');
-        $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id');
-        $this->db->join('fee_categories fc_cat', 'fs.fee_category_id = fc_cat.id');
-        $this->db->join('staff', 'fc.collected_by_staff_id = staff.id', 'left');
+        $this->db->join('fee_types ft', 'fc.fee_type_id = ft.id', 'left');
+        $this->db->join('staff', 'fc.collected_by = staff.id', 'left');
         $this->db->where('fc.student_id', $student_id);
         $this->db->order_by('fc.collection_date', 'DESC');
         
         $query = $this->db->get();
-        return $query->result_array();
+        $collections = $query->result_array();
+        
+        // Enhance each collection with actual fee category information
+        foreach ($collections as &$collection) {
+            $collection['actual_fee_categories'] = [];
+            
+            // Parse remarks to extract fee assignment IDs
+            if (!empty($collection['remarks'])) {
+                preg_match_all('/\d+/', $collection['remarks'], $matches);
+                $assignment_ids = $matches[0];
+                
+                if (!empty($assignment_ids)) {
+                    // Get the actual fee categories for these assignments
+                    $this->db->select('sfa.semester, fs.amount, fc.name as category_name');
+                    $this->db->from('student_fee_assignments sfa');
+                    $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id');
+                    $this->db->join('fee_categories fc', 'fs.fee_category_id = fc.id');
+                    $this->db->where_in('sfa.id', $assignment_ids);
+                    $categories_query = $this->db->get();
+                    $collection['actual_fee_categories'] = $categories_query->result_array();
+                }
+            }
+            
+            // Set primary category for display
+            if (!empty($collection['actual_fee_categories'])) {
+                $categories = array_column($collection['actual_fee_categories'], 'category_name');
+                $collection['primary_category'] = implode(', ', array_unique($categories));
+            } else {
+                $collection['primary_category'] = $collection['fee_type_name'];
+            }
+        }
+        
+        return $collections;
     }
     
     public function get_collection_summary($filters = []) {
@@ -751,18 +882,316 @@ class Fee_collection_model extends CI_Model {
     }
     
     /**
+     * Get fee collections by staff member
+     */
+    public function get_collections_by_staff($staff_id, $limit = 20, $offset = 0, $start_date = null, $end_date = null) {
+        $this->db->select('
+            fc.*,
+            s.student_name,
+            s.roll_number,
+            g.name as grade_name,
+            d.name as division_name,
+            staff.name as collected_by_name,
+            staff.id as collected_by_id,
+            COALESCE(ft.name, "Direct Payment") as category_name
+        ');
+        $this->db->from('fee_collections fc');
+        $this->db->join('students s', 'fc.student_id = s.id');
+        $this->db->join('grades g', 's.grade_id = g.id');
+        $this->db->join('divisions d', 's.division_id = d.id');
+        $this->db->join('staff', 'fc.collected_by = staff.id', 'left');
+        $this->db->join('fee_types ft', 'fc.fee_type_id = ft.id', 'left');
+        
+        // Filter by staff who collected the fee
+        $this->db->where('fc.collected_by', $staff_id);
+        
+        if ($start_date) {
+            $this->db->where('fc.collection_date >=', $start_date);
+        }
+        
+        if ($end_date) {
+            $this->db->where('fc.collection_date <=', $end_date);
+        }
+        
+        $this->db->order_by('fc.collection_date', 'DESC');
+        $this->db->order_by('fc.id', 'DESC');
+        $this->db->limit($limit, $offset);
+        
+        log_message('debug', 'Fee_collection_model::get_collections_by_staff: Query for staff_id: ' . $staff_id);
+        return $this->db->get()->result_array();
+    }
+    
+    /**
+     * Count fee collections by staff member
+     */
+    public function count_collections_by_staff($staff_id, $start_date = null, $end_date = null) {
+        $this->db->from('fee_collections fc');
+        $this->db->where('fc.collected_by', $staff_id);
+        
+        if ($start_date) {
+            $this->db->where('fc.collection_date >=', $start_date);
+        }
+        
+        if ($end_date) {
+            $this->db->where('fc.collection_date <=', $end_date);
+        }
+        
+        log_message('debug', 'Fee_collection_model::count_collections_by_staff: Count for staff_id: ' . $staff_id);
+        return $this->db->count_all_results();
+    }
+
+    /**
      * Update staff wallet when fee is collected
      */
-    private function update_staff_wallet($staff_id, $amount, $collection_id, $receipt_number) {
+    private function update_staff_wallet($staff_id, $amount, $collection_id, $receipt_number, $payment_mode = null) {
         $this->load->model('Staff_wallet_model');
         
         $description = "Fee collection - Receipt: $receipt_number";
-        $result = $this->Staff_wallet_model->add_collection($staff_id, $amount, $collection_id, $description, $receipt_number);
+        $result = $this->Staff_wallet_model->add_collection($staff_id, $amount, $collection_id, $description, $receipt_number, $payment_mode);
         
         if (!$result) {
             log_message('error', "Failed to update staff wallet for staff_id: $staff_id, amount: $amount, collection_id: $collection_id");
         }
         
         return $result;
+    }
+
+    // ==================== PARENT-SPECIFIC METHODS ====================
+
+    /**
+     * Get fee collections for a parent's children
+     */
+    public function get_collections_by_parent($parent_id, $limit = 20, $offset = 0, $start_date = null, $end_date = null) {
+        // Check what columns exist in fee_collections table
+        $fc_columns = $this->db->list_fields('fee_collections');
+        $has_assignment_id = in_array('student_fee_assignment_id', $fc_columns);
+        
+        $this->db->select('
+            fc.*,
+            fc.collection_date as payment_date,
+            s.student_name,
+            s.roll_number,
+            "Fee Payment" as fee_category_name,
+            staff.name as collected_by_name,
+            staff.id as collected_by_id
+        ');
+        $this->db->from('fee_collections fc');
+        $this->db->join('students s', 's.id = fc.student_id', 'left');
+        
+        // Only join assignments/categories if the column exists
+        if ($has_assignment_id) {
+            $this->db->select('COALESCE(cat.name, "Direct Payment") as fee_category_name', FALSE);
+            $this->db->join('student_fee_assignments sfa', 'fc.student_fee_assignment_id = sfa.id', 'left');
+            $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id', 'left');
+            $this->db->join('fee_categories cat', 'fs.fee_category_id = cat.id', 'left');
+        }
+        
+        $this->db->join('staff', 'fc.collected_by = staff.id', 'left');
+        $this->db->where('s.parent_id', $parent_id);
+        
+        if ($start_date) {
+            $this->db->where('fc.collection_date >=', $start_date);
+        }
+        
+        if ($end_date) {
+            $this->db->where('fc.collection_date <=', $end_date);
+        }
+        
+        $this->db->order_by('fc.collection_date', 'DESC');
+        $this->db->limit($limit, $offset);
+        
+        log_message('debug', 'Fee_collection_model::get_collections_by_parent: Query for parent_id: ' . $parent_id);
+        return $this->db->get()->result_array();
+    }
+
+    /**
+     * Count fee collections for a parent's children
+     */
+    public function count_collections_by_parent($parent_id, $start_date = null, $end_date = null) {
+        $this->db->from('fee_collections fc');
+        $this->db->join('students s', 's.id = fc.student_id', 'left');
+        $this->db->where('s.parent_id', $parent_id);
+        
+        if ($start_date) {
+            $this->db->where('fc.collection_date >=', $start_date);
+        }
+        
+        if ($end_date) {
+            $this->db->where('fc.collection_date <=', $end_date);
+        }
+        
+        log_message('debug', 'Fee_collection_model::count_collections_by_parent: Count for parent_id: ' . $parent_id);
+        return $this->db->count_all_results();
+    }
+
+    /**
+     * Get fee collections by student
+     */
+    public function get_collections_by_student($student_id, $limit = 20, $offset = 0, $start_date = null, $end_date = null) {
+        // Check what columns exist in fee_collections table
+        $fc_columns = $this->db->list_fields('fee_collections');
+        $has_assignment_id = in_array('student_fee_assignment_id', $fc_columns);
+        
+        $this->db->select('
+            fc.*,
+            fc.collection_date as payment_date,
+            s.student_name,
+            s.roll_number,
+            "Fee Payment" as fee_category_name,
+            staff.name as collected_by_name,
+            staff.id as collected_by_id
+        ');
+        $this->db->from('fee_collections fc');
+        $this->db->join('students s', 's.id = fc.student_id', 'left');
+        
+        // Only join assignments/categories if the column exists
+        if ($has_assignment_id) {
+            $this->db->select('COALESCE(cat.name, "Direct Payment") as fee_category_name', FALSE);
+            $this->db->join('student_fee_assignments sfa', 'fc.student_fee_assignment_id = sfa.id', 'left');
+            $this->db->join('fee_structures fs', 'sfa.fee_structure_id = fs.id', 'left');
+            $this->db->join('fee_categories cat', 'fs.fee_category_id = cat.id', 'left');
+        }
+        
+        $this->db->join('staff', 'fc.collected_by = staff.id', 'left');
+        $this->db->where('fc.student_id', $student_id);
+        
+        if ($start_date) {
+            $this->db->where('fc.collection_date >=', $start_date);
+        }
+        
+        if ($end_date) {
+            $this->db->where('fc.collection_date <=', $end_date);
+        }
+        
+        $this->db->order_by('fc.collection_date', 'DESC');
+        $this->db->limit($limit, $offset);
+        
+        return $this->db->get()->result_array();
+    }
+
+    /**
+     * Count fee collections by student
+     */
+    public function count_collections_by_student($student_id, $start_date = null, $end_date = null) {
+        $this->db->from('fee_collections fc');
+        $this->db->where('fc.student_id', $student_id);
+        
+        if ($start_date) {
+            $this->db->where('fc.collection_date >=', $start_date);
+        }
+        
+        if ($end_date) {
+            $this->db->where('fc.collection_date <=', $end_date);
+        }
+        
+        return $this->db->count_all_results();
+    }
+
+    /**
+     * Get outstanding fees for a parent's children
+     */
+    public function get_outstanding_fees_by_parent($parent_id) {
+        $this->db->select('
+            s.id as student_id,
+            s.student_name,
+            s.roll_number,
+            SUM(sfa.pending_amount) as total_outstanding,
+            COUNT(sfa.id) as pending_fees_count
+        ');
+        $this->db->from('students s');
+        $this->db->join('student_fee_assignments sfa', 'sfa.student_id = s.id AND sfa.status = "pending"', 'left');
+        $this->db->where('s.parent_id', $parent_id);
+        $this->db->where('sfa.pending_amount >', 0);
+        $this->db->group_by('s.id');
+        
+        $students_with_outstanding = $this->db->get()->result_array();
+        
+        // Get detailed fees for each student
+        foreach ($students_with_outstanding as &$student) {
+            $this->db->select('
+                fs.id as fee_structure_id,
+                cat.name as fee_category_name,
+                sfa.pending_amount as amount,
+                sfa.due_date
+            ');
+            $this->db->from('student_fee_assignments sfa');
+            $this->db->join('fee_structures fs', 'fs.id = sfa.fee_structure_id', 'left');
+            $this->db->join('fee_categories cat', 'cat.id = fs.fee_category_id', 'left');
+            $this->db->where('sfa.student_id', $student['student_id']);
+            $this->db->where('sfa.status', 'pending');
+            $this->db->where('sfa.pending_amount >', 0);
+            
+            $student['fees'] = $this->db->get()->result_array();
+        }
+        
+        return $students_with_outstanding;
+    }
+
+    /**
+     * Get outstanding fees for a specific student
+     */
+    public function get_outstanding_fees_by_student($student_id) {
+        $this->db->select('
+            s.id as student_id,
+            s.student_name,
+            s.roll_number,
+            SUM(sfa.pending_amount) as total_outstanding,
+            COUNT(sfa.id) as pending_fees_count
+        ');
+        $this->db->from('students s');
+        $this->db->join('student_fee_assignments sfa', 'sfa.student_id = s.id AND sfa.status = "pending"', 'left');
+        $this->db->where('s.id', $student_id);
+        $this->db->where('sfa.pending_amount >', 0);
+        $this->db->group_by('s.id');
+        
+        $result = $this->db->get()->row_array();
+        
+        if (!$result) {
+            return [];
+        }
+        
+        // Get detailed fees
+        $this->db->select('
+            fs.id as fee_structure_id,
+            cat.name as fee_category_name,
+            sfa.pending_amount as amount,
+            sfa.due_date
+        ');
+        $this->db->from('student_fee_assignments sfa');
+        $this->db->join('fee_structures fs', 'fs.id = sfa.fee_structure_id', 'left');
+        $this->db->join('fee_categories cat', 'cat.id = fs.fee_category_id', 'left');
+        $this->db->where('sfa.student_id', $student_id);
+        $this->db->where('sfa.status', 'pending');
+        $this->db->where('sfa.pending_amount >', 0);
+        
+        $result['fees'] = $this->db->get()->result_array();
+        
+        return [$result];
+    }
+
+    /**
+     * Get fee summary for a parent
+     */
+    public function get_fee_summary_by_parent($parent_id) {
+        // Get total paid
+        $this->db->select('COALESCE(SUM(fc.amount), 0) as total_paid, COUNT(fc.id) as total_transactions');
+        $this->db->from('fee_collections fc');
+        $this->db->join('students s', 's.id = fc.student_id', 'left');
+        $this->db->where('s.parent_id', $parent_id);
+        $paid_data = $this->db->get()->row_array();
+        
+        // Get total outstanding
+        $this->db->select('COALESCE(SUM(sfa.pending_amount), 0) as total_outstanding');
+        $this->db->from('student_fee_assignments sfa');
+        $this->db->join('students s', 's.id = sfa.student_id', 'left');
+        $this->db->where('s.parent_id', $parent_id);
+        $this->db->where('sfa.status', 'pending');
+        $outstanding_data = $this->db->get()->row_array();
+        
+        return [
+            'total_paid' => $paid_data['total_paid'] ?? 0,
+            'total_outstanding' => $outstanding_data['total_outstanding'] ?? 0,
+            'total_transactions' => $paid_data['total_transactions'] ?? 0
+        ];
     }
 }

@@ -54,9 +54,15 @@ class Staff_model extends CI_Model {
             $this->db->select('staff.*, roles.name as role_name');
             $this->db->from('staff');
             $this->db->join('roles', 'staff.role_id = roles.id', 'left');
+            // Exclude super_admin role from the list
+            $this->db->where('roles.name !=', 'super_admin');
         } else {
             $this->db->select('staff.*, staff.role_name');
             $this->db->from('staff');
+            // If no roles table, exclude by role_name column
+            if ($this->db->field_exists('role_name', 'staff')) {
+                $this->db->where('staff.role_name !=', 'super_admin');
+            }
         }
         $this->db->where('staff.is_active', 1);
         
@@ -124,6 +130,20 @@ class Staff_model extends CI_Model {
         $data['password_hash'] = password_hash($data['password'], PASSWORD_DEFAULT);
         unset($data['password']);
         
+        // Ensure numeric fields are properly formatted
+        if (isset($data['basic_salary'])) {
+            $data['basic_salary'] = (float) $data['basic_salary'];
+        }
+        if (isset($data['allowances'])) {
+            $data['allowances'] = (float) $data['allowances'];
+        }
+        if (isset($data['deductions'])) {
+            $data['deductions'] = (float) $data['deductions'];
+        }
+        if (isset($data['pf_contribution'])) {
+            $data['pf_contribution'] = (float) $data['pf_contribution'];
+        }
+        
         $data['created_at'] = date('Y-m-d H:i:s');
         $data['updated_at'] = date('Y-m-d H:i:s');
         
@@ -164,6 +184,20 @@ class Staff_model extends CI_Model {
         if (isset($data['password'])) {
             $data['password_hash'] = password_hash($data['password'], PASSWORD_DEFAULT);
             unset($data['password']);
+        }
+        
+        // Ensure numeric fields are properly formatted
+        if (isset($data['basic_salary'])) {
+            $data['basic_salary'] = (float) $data['basic_salary'];
+        }
+        if (isset($data['allowances'])) {
+            $data['allowances'] = (float) $data['allowances'];
+        }
+        if (isset($data['deductions'])) {
+            $data['deductions'] = (float) $data['deductions'];
+        }
+        if (isset($data['pf_contribution'])) {
+            $data['pf_contribution'] = (float) $data['pf_contribution'];
         }
         
         $data['updated_at'] = date('Y-m-d H:i:s');
@@ -243,19 +277,34 @@ class Staff_model extends CI_Model {
     }
     
     public function count_staff($search = null, $role_id = null) {
-        $this->db->from('staff');
-        $this->db->where('is_active', 1);
+        // Check if roles table exists
+        $tables = $this->db->list_tables();
+        $has_roles_table = in_array('roles', $tables);
+        
+        if ($has_roles_table && $this->db->field_exists('role_id', 'staff')) {
+            $this->db->from('staff');
+            $this->db->join('roles', 'staff.role_id = roles.id', 'left');
+            // Exclude super_admin role from count
+            $this->db->where('roles.name !=', 'super_admin');
+        } else {
+            $this->db->from('staff');
+            // If no roles table, exclude by role_name column
+            if ($this->db->field_exists('role_name', 'staff')) {
+                $this->db->where('staff.role_name !=', 'super_admin');
+            }
+        }
+        $this->db->where('staff.is_active', 1);
         
         if ($search) {
             $this->db->group_start();
-            $this->db->like('name', $search);
-            $this->db->or_like('mobile', $search);
-            $this->db->or_like('email', $search);
+            $this->db->like('staff.name', $search);
+            $this->db->or_like('staff.mobile', $search);
+            $this->db->or_like('staff.email', $search);
             $this->db->group_end();
         }
         
         if ($role_id) {
-            $this->db->where('role_id', $role_id);
+            $this->db->where('staff.role_id', $role_id);
         }
         
         return $this->db->count_all_results();

@@ -203,6 +203,50 @@ class Role_model extends CI_Model {
                 'description' => 'Export reports to various formats'
             ],
             
+            // Syllabus Management
+            'syllabus' => [
+                'label' => 'Syllabus - Full Access',
+                'description' => 'Create, read, update, delete syllabus and subjects'
+            ],
+            'syllabus.view' => [
+                'label' => 'Syllabus - View Only',
+                'description' => 'View syllabus and subjects'
+            ],
+            'syllabus.create' => [
+                'label' => 'Syllabus - Create',
+                'description' => 'Create syllabus entries and subjects'
+            ],
+            'syllabus.update' => [
+                'label' => 'Syllabus - Update',
+                'description' => 'Edit syllabus entries and subjects'
+            ],
+            'syllabus.delete' => [
+                'label' => 'Syllabus - Delete',
+                'description' => 'Delete syllabus entries and subjects'
+            ],
+            
+            // Vision Statements Management
+            'vision_statements' => [
+                'label' => 'Vision Statements - Full Access',
+                'description' => 'Create, read, update, delete vision statements'
+            ],
+            'vision_statements.view' => [
+                'label' => 'Vision Statements - View Only',
+                'description' => 'View vision statements'
+            ],
+            'vision_statements.create' => [
+                'label' => 'Vision Statements - Create',
+                'description' => 'Create new vision statements'
+            ],
+            'vision_statements.update' => [
+                'label' => 'Vision Statements - Update',
+                'description' => 'Edit vision statements'
+            ],
+            'vision_statements.delete' => [
+                'label' => 'Vision Statements - Delete',
+                'description' => 'Delete vision statements'
+            ],
+            
             // Search
             'search' => [
                 'label' => 'Global Search',
@@ -227,7 +271,9 @@ class Role_model extends CI_Model {
     public function get_permission_groups() {
         return [
             'General' => ['dashboard', 'search'],
-            'Academic Management' => ['academic_years', 'academic_years.view', 'grades', 'grades.view', 'divisions', 'divisions.view'],
+            'Academic Management' => ['academic_years', 'academic_years.view', 'grades', 'grades.view', 'divisions', 'divisions.view',
+                                      'syllabus', 'syllabus.view', 'syllabus.create', 'syllabus.update', 'syllabus.delete',
+                                      'vision_statements', 'vision_statements.view', 'vision_statements.create', 'vision_statements.update', 'vision_statements.delete'],
             'User Management' => ['students', 'students.view', 'students.create', 'students.update', 'students.delete',
                                 'parents', 'parents.view', 'parents.create', 'parents.update', 'parents.delete',
                                 'staff', 'staff.view', 'staff.create', 'staff.update', 'staff.delete'],

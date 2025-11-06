@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AcademicYearProvider } from './contexts/AcademicYearContext';
 import { Toaster } from 'react-hot-toast';
 import LoginPage from './pages/LoginPage';
@@ -31,6 +31,28 @@ const queryClient = new QueryClient({
   },
 });
 
+// Component to redirect users to their appropriate dashboard
+const RoleBasedRedirect = () => {
+  const { user, isAuthenticated } = useAuth() as any;
+  
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  // Staff goes to staff dashboard (full admin functionality)
+  if (user.user_type === 'staff') {
+    return <Navigate to="/staff" replace />;
+  }
+  
+  // Parent goes to parent dashboard
+  if (user.user_type === 'parent') {
+    return <Navigate to="/parent" replace />;
+  }
+  
+  // Everyone else (admin and any other roles) goes to admin
+  return <Navigate to="/admin" replace />;
+};
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -55,7 +77,7 @@ function App() {
                     <ParentDashboard />
                   </ProtectedRoute>
                 } />
-                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/" element={<RoleBasedRedirect />} />
               </Routes>
               <Toaster position="top-right" />
             </div>

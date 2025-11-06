@@ -177,6 +177,20 @@ class Complaint_model extends CI_Model {
     public function assign_complaint($id, $staff_id, $assigned_by_id) {
         $this->db->trans_start();
         
+        // Get current assignment to check if it's a reassignment
+        $this->db->select('assigned_to_staff_id, staff.name as current_staff_name');
+        $this->db->from('complaints');
+        $this->db->join('staff', 'complaints.assigned_to_staff_id = staff.id', 'left');
+        $this->db->where('complaints.id', $id);
+        $current_assignment = $this->db->get()->row_array();
+        
+        $is_reassignment = !empty($current_assignment['assigned_to_staff_id']);
+        
+        // Get new staff member name
+        $this->db->select('name');
+        $this->db->where('id', $staff_id);
+        $new_staff = $this->db->get('staff')->row_array();
+        
         // Update complaint assignment
         $this->db->where('id', $id);
         $result = $this->db->update('complaints', [
@@ -186,11 +200,15 @@ class Complaint_model extends CI_Model {
         ]);
         
         if ($result) {
-            // Add assignment comment
+            // Add assignment/reassignment comment
+            $comment_text = $is_reassignment 
+                ? "Complaint reassigned from {$current_assignment['current_staff_name']} to {$new_staff['name']}."
+                : "Complaint assigned to {$new_staff['name']}.";
+                
             $this->add_comment($id, [
                 'commented_by_type' => 'staff',
                 'commented_by_id' => $assigned_by_id,
-                'comment' => 'Complaint assigned to staff member.',
+                'comment' => $comment_text,
                 'is_internal' => 1
             ]);
         }

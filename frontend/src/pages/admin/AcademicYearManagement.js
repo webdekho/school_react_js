@@ -451,17 +451,10 @@ const AcademicYearManagement = () => {
       {/* Add/Edit Academic Year Modal */}
       <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-academic text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-calendar-range fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">{editingYear ? 'Edit Academic Year' : 'Add New Academic Year'}</h5>
-                <small className="opacity-75">
-                  {editingYear ? 'Update academic year information' : 'Create a new academic year'}
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-academic text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-calendar-range me-2"></i>
+              <span>{editingYear ? 'Edit Academic Year' : 'Add New Academic Year'}</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleSubmit}>

@@ -9,21 +9,33 @@ const AcademicYearSelector = () => {
   const queryClient = useQueryClient();
 
   // Fetch available academic years
-  const { data: academicYears = [], isLoading } = useQuery({
+  const { data: academicYears = [], isLoading, error } = useQuery({
     queryKey: ['academic-years-dropdown'],
     queryFn: async () => {
-      const response = await apiService.get('/api/admin/academic_years_dropdown');
-      return response.data || [];
+      try {
+        const response = await apiService.get('/api/admin/academic_years_dropdown');
+        console.log('Academic years response:', response);
+        return response.data || [];
+      } catch (error) {
+        console.error('Error fetching academic years:', error);
+        throw error;
+      }
     },
     staleTime: 5 * 60 * 1000 // 5 minutes
   });
 
   // Get current academic year
-  const { data: currentYear } = useQuery({
+  const { data: currentYear, error: currentYearError } = useQuery({
     queryKey: ['current-academic-year'],
     queryFn: async () => {
-      const response = await apiService.get('/api/admin/academic_years_current');
-      return response.data;
+      try {
+        const response = await apiService.get('/api/admin/academic_years_current');
+        console.log('Current academic year response:', response);
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching current academic year:', error);
+        throw error;
+      }
     },
     staleTime: 5 * 60 * 1000
   });
@@ -151,39 +163,51 @@ const AcademicYearSelector = () => {
         </Dropdown.Header>
         <Dropdown.Divider />
         
-        {academicYears.map((year) => (
-          <Dropdown.Item
-            key={year.id}
-            active={selectedYear?.id === year.id}
-            onClick={() => handleYearChange(year)}
-            className="d-flex align-items-center justify-content-between py-2"
-          >
-            <div className="d-flex flex-column">
-              <div className="d-flex align-items-center">
-                <span className="fw-medium">{year.name}</span>
-                {year.is_default == 1 && (
-                  <Badge bg="warning" size="sm" className="ms-2">
-                    <i className="bi bi-star-fill me-1"></i>Default
-                  </Badge>
-                )}
-              </div>
-              <small className="text-muted">
-                {new Date(year.start_date).toLocaleDateString()} - {new Date(year.end_date).toLocaleDateString()}
-              </small>
-            </div>
-            
-            {year.is_default != 1 && (
-              <button
-                className="btn btn-sm btn-outline-warning ms-2"
-                onClick={(e) => handleSetAsDefault(year, e)}
-                title="Set as Default"
-                disabled={setDefaultMutation.isLoading}
-              >
-                <i className="bi bi-star"></i>
-              </button>
-            )}
+        {error ? (
+          <Dropdown.Item disabled className="text-danger">
+            <i className="bi bi-exclamation-triangle me-2"></i>
+            Error loading academic years: {error.message}
           </Dropdown.Item>
-        ))}
+        ) : academicYears.length === 0 ? (
+          <Dropdown.Item disabled className="text-muted">
+            <i className="bi bi-info-circle me-2"></i>
+            No academic years available
+          </Dropdown.Item>
+        ) : (
+          academicYears.map((year) => (
+            <Dropdown.Item
+              key={year.id}
+              active={selectedYear?.id === year.id}
+              onClick={() => handleYearChange(year)}
+              className="d-flex align-items-center justify-content-between py-2"
+            >
+              <div className="d-flex flex-column">
+                <div className="d-flex align-items-center">
+                  <span className="fw-medium">{year.name}</span>
+                  {year.is_default == 1 && (
+                    <Badge bg="warning" size="sm" className="ms-2">
+                      <i className="bi bi-star-fill me-1"></i>Default
+                    </Badge>
+                  )}
+                </div>
+                <small className="text-muted">
+                  {new Date(year.start_date).toLocaleDateString()} - {new Date(year.end_date).toLocaleDateString()}
+                </small>
+              </div>
+              
+              {year.is_default != 1 && (
+                <button
+                  className="btn btn-sm btn-outline-warning ms-2"
+                  onClick={(e) => handleSetAsDefault(year, e)}
+                  title="Set as Default"
+                  disabled={setDefaultMutation.isLoading}
+                >
+                  <i className="bi bi-star"></i>
+                </button>
+              )}
+            </Dropdown.Item>
+          ))
+        )}
         
         <Dropdown.Divider />
         <Dropdown.Item className="text-muted small" disabled>

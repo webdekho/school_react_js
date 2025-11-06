@@ -419,17 +419,10 @@ const DivisionManagement = () => {
       {/* Add/Edit Division Modal */}
       <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-secondary text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-grid fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">{editingDivision ? 'Edit Division' : 'Add New Division'}</h5>
-                <small className="opacity-75">
-                  {editingDivision ? 'Update division information' : 'Create a new class division'}
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-secondary text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-grid me-2"></i>
+              <span>{editingDivision ? 'Edit Division' : 'Add New Division'}</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleSubmit}>

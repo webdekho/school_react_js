@@ -23,11 +23,18 @@ const AnnouncementsNotification = () => {
           limit: 10,
           offset: 0,
           status: 'sent', // Only show sent announcements
-          target_type: user?.user_type === 'admin' ? undefined : user?.user_type // Admin sees all, others see their type
         };
         
-        const response = await apiService.get('/api/user/announcements', params);
-        return response.data?.data || [];
+        // Determine the correct endpoint based on user type
+        let endpoint = '/api/admin/announcements';
+        if (user?.user_type === 'parent') {
+          endpoint = '/api/parent/announcements';
+        } else if (user?.user_type === 'staff') {
+          endpoint = '/api/staff/announcements';
+        }
+        
+        const response = await apiService.get(endpoint, params);
+        return response.data?.data || response.data || [];
       } catch (error) {
         // If endpoint fails, return default announcements
         if (error.response?.status === 404 || error.response?.status === 403) {
@@ -48,11 +55,18 @@ const AnnouncementsNotification = () => {
           limit: 50, // Get more announcements for the full view
           offset: 0,
           status: 'sent',
-          target_type: user?.user_type === 'admin' ? undefined : user?.user_type
         };
         
-        const response = await apiService.get('/api/user/announcements', params);
-        return response.data?.data || [];
+        // Determine the correct endpoint based on user type
+        let endpoint = '/api/admin/announcements';
+        if (user?.user_type === 'parent') {
+          endpoint = '/api/parent/announcements';
+        } else if (user?.user_type === 'staff') {
+          endpoint = '/api/staff/announcements';
+        }
+        
+        const response = await apiService.get(endpoint, params);
+        return response.data?.data || response.data || [];
       } catch (error) {
         if (error.response?.status === 404 || error.response?.status === 403) {
           return getDefaultAnnouncements();
@@ -98,8 +112,8 @@ const AnnouncementsNotification = () => {
       }
     ];
 
-    // Filter based on user type (admin sees all, others see relevant ones)
-    if (user?.user_type === 'admin') {
+    // Filter based on user type (admin and staff see all, others see relevant ones)
+    if (user?.user_type === 'admin' || user?.user_type === 'staff') {
       return baseAnnouncements;
     } else {
       return baseAnnouncements.filter(ann => 
@@ -112,9 +126,15 @@ const AnnouncementsNotification = () => {
   const markAsReadMutation = useMutation({
     mutationFn: async (announcementId) => {
       try {
-        // This would typically call an API to mark as read
-        // For now, we'll simulate it
-        const response = await apiService.post(`/api/user/mark_announcement_read/${announcementId}`);
+        // Determine the correct endpoint based on user type
+        let endpoint = `/api/admin/announcements/${announcementId}/read`;
+        if (user?.user_type === 'parent') {
+          endpoint = `/api/parent/announcements/${announcementId}/read`;
+        } else if (user?.user_type === 'staff') {
+          endpoint = `/api/staff/announcements/${announcementId}/read`;
+        }
+        
+        const response = await apiService.post(endpoint);
         return response.data;
       } catch (error) {
         // If endpoint doesn't exist, simulate locally
@@ -126,6 +146,7 @@ const AnnouncementsNotification = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['user_announcements']);
+      queryClient.invalidateQueries(['all_user_announcements']);
     },
     onError: (error) => {
       console.error('Failed to mark announcement as read:', error);
@@ -137,7 +158,7 @@ const AnnouncementsNotification = () => {
     markAsReadMutation.mutate(announcement.id);
     
     // Navigate to announcements page or show details
-    if (user?.user_type === 'admin') {
+    if (user?.user_type === 'admin' || user?.user_type === 'staff') {
       navigate('/admin/announcements', { 
         state: { 
           searchAnnouncement: announcement.title, 
@@ -150,6 +171,86 @@ const AnnouncementsNotification = () => {
     }
     
     setShowAnnouncements(false);
+  };
+
+  // File download functions
+  const handleDownloadAttachment = (filepath, filename) => {
+    if (!filepath) return;
+    
+    const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost/School/backend/';
+    const fileUrl = filepath.split('/').pop();
+    const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL : API_BASE_URL + '/';
+    const downloadUrl = `${baseUrl}api/admin/public_download_attachment/${fileUrl}`;
+    
+    // Create a temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success('Downloading file...');
+  };
+
+  const handleOpenFile = (filepath, filename, mimeType) => {
+    if (!filepath) return;
+    
+    const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost/School/backend/';
+    const fileUrl = filepath.split('/').pop();
+    const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL : API_BASE_URL + '/';
+    const fileOpenUrl = `${baseUrl}api/admin/public_download_attachment/${fileUrl}`;
+    
+    // Check if it's a viewable file type
+    const viewableTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'text/plain'
+    ];
+    
+    if (viewableTypes.includes(mimeType)) {
+      // Open in new tab for viewable files
+      window.open(fileOpenUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // Force download for other file types
+      handleDownloadAttachment(filepath, filename);
+    }
+  };
+
+  const handleCopyFileLink = async (announcement) => {
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost/School/backend/';
+      const fileUrl = announcement.attachment_filepath.split('/').pop();
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL : API_BASE_URL + '/';
+      const fileDownloadLink = `${baseUrl}api/admin/public_download_attachment/${fileUrl}`;
+      
+      // Copy to clipboard
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(fileDownloadLink);
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = fileDownloadLink;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+      
+      toast.success('File link copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to copy file link:', error);
+      toast.error('Failed to copy file link');
+    }
   };
 
   const getPriorityColor = (priority) => {
@@ -186,16 +287,16 @@ const AnnouncementsNotification = () => {
     return date.toLocaleDateString();
   };
 
-  // Filter announcements based on user type and recency (last 7 days for notifications)
+  // Filter announcements based on user type (show all recent announcements)
   const recentAnnouncements = announcements?.filter(announcement => {
-    const isRecent = new Date(announcement.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const isRelevant = announcement.target_type === 'all' || 
                       announcement.target_type === user?.user_type ||
-                      user?.user_type === 'admin';
-    return isRecent && isRelevant && announcement.status === 'sent';
+                      user?.user_type === 'admin' || user?.user_type === 'staff';
+    return isRelevant && announcement.status === 'sent';
   }) || [];
 
   const unreadCount = recentAnnouncements.filter(ann => !ann.is_read).length || recentAnnouncements.length;
+  const attachmentCount = recentAnnouncements.filter(ann => ann.attachment_filename).length;
 
   return (
     <div className="position-relative">
@@ -233,10 +334,20 @@ const AnnouncementsNotification = () => {
               <h6 className="mb-0">
                 <i className="bi bi-bell me-2"></i>
                 Announcements
+                {attachmentCount > 0 && (
+                  <i className="bi bi-paperclip text-info ms-1" title={`${attachmentCount} with attachments`}></i>
+                )}
               </h6>
-              <Badge bg="primary" pill>{unreadCount}</Badge>
+              <div className="d-flex align-items-center gap-2">
+                {attachmentCount > 0 && (
+                  <Badge bg="info" className="small">
+                    {attachmentCount} files
+                  </Badge>
+                )}
+                <Badge bg="primary" pill>{unreadCount}</Badge>
+              </div>
             </div>
-            {user?.user_type !== 'admin' && (
+            {user?.user_type !== 'admin' && user?.user_type !== 'staff' && (
               <small className="text-muted">
                 Showing announcements for {user?.user_type}s and general announcements
               </small>
@@ -295,6 +406,61 @@ const AnnouncementsNotification = () => {
                         }}>
                           {announcement.message}
                         </div>
+                        
+                        {/* File Attachment Section */}
+                        {announcement.attachment_filename && (
+                          <div className="mb-2 p-2 bg-light rounded small">
+                            <div className="d-flex align-items-center justify-content-between">
+                              <div className="d-flex align-items-center">
+                                <i className="bi bi-paperclip text-muted me-1"></i>
+                                <span className="text-muted">{announcement.attachment_filename}</span>
+                              </div>
+                              <div className="d-flex gap-1">
+                                <button
+                                  type="button"
+                                  className="btn btn-link text-success p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenFile(
+                                      announcement.attachment_filepath, 
+                                      announcement.attachment_filename, 
+                                      announcement.attachment_mime_type
+                                    );
+                                  }}
+                                  title="Open file"
+                                >
+                                  <i className="bi bi-eye"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-link text-primary p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadAttachment(
+                                      announcement.attachment_filepath, 
+                                      announcement.attachment_filename
+                                    );
+                                  }}
+                                  title="Download file"
+                                >
+                                  <i className="bi bi-download"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-link text-info p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyFileLink(announcement);
+                                  }}
+                                  title="Copy file link"
+                                >
+                                  <i className="bi bi-link-45deg"></i>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="d-flex align-items-center justify-content-between">
                           <small className="text-muted">
                             <i className="bi bi-person me-1"></i>
@@ -346,7 +512,7 @@ const AnnouncementsNotification = () => {
           <Modal.Title>
             <i className="bi bi-bell me-2"></i>
             All Announcements
-            {user?.user_type !== 'admin' && (
+            {user?.user_type !== 'admin' && user?.user_type !== 'staff' && (
               <Badge bg="secondary" className="ms-2">
                 {user?.user_type}
               </Badge>
@@ -395,6 +561,68 @@ const AnnouncementsNotification = () => {
                         <p className="text-muted mb-3" style={{ fontSize: '0.95rem' }}>
                           {announcement.message}
                         </p>
+                        
+                        {/* File Attachment Section for Modal */}
+                        {announcement.attachment_filename && (
+                          <div className="mb-3 p-3 bg-light rounded">
+                            <div className="d-flex align-items-center justify-content-between">
+                              <div className="d-flex align-items-center">
+                                <i className="bi bi-file-earmark text-primary me-2 fs-5"></i>
+                                <div>
+                                  <div className="fw-medium">{announcement.attachment_filename}</div>
+                                  <small className="text-muted">
+                                    {announcement.attachment_size ? 
+                                      `${(announcement.attachment_size / 1024 / 1024).toFixed(2)} MB` : 
+                                      'File attachment'
+                                    }
+                                  </small>
+                                </div>
+                              </div>
+                              <div className="d-flex gap-1">
+                                <Button
+                                  variant="outline-success"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenFile(
+                                      announcement.attachment_filepath, 
+                                      announcement.attachment_filename, 
+                                      announcement.attachment_mime_type
+                                    );
+                                  }}
+                                  title="Open file"
+                                >
+                                  <i className="bi bi-eye me-1"></i>Open
+                                </Button>
+                                <Button
+                                  variant="outline-primary"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadAttachment(
+                                      announcement.attachment_filepath, 
+                                      announcement.attachment_filename
+                                    );
+                                  }}
+                                  title="Download file"
+                                >
+                                  <i className="bi bi-download me-1"></i>Download
+                                </Button>
+                                <Button
+                                  variant="outline-info"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyFileLink(announcement);
+                                  }}
+                                  title="Copy file link"
+                                >
+                                  <i className="bi bi-link-45deg me-1"></i>Copy
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         
                         <div className="d-flex justify-content-between align-items-center">
                           <div className="d-flex align-items-center gap-3">
@@ -450,7 +678,7 @@ const AnnouncementsNotification = () => {
               )}
             </div>
             <div className="d-flex gap-2">
-              {user?.user_type === 'admin' && (
+              {(user?.user_type === 'admin' || user?.user_type === 'staff') && (
                 <Button
                   variant="outline-secondary"
                   onClick={() => {

@@ -18,6 +18,7 @@ const AnnouncementsManagement = () => {
   const [highlightedAnnouncementId, setHighlightedAnnouncementId] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [formData, setFormData] = useState({
@@ -371,14 +372,27 @@ const AnnouncementsManagement = () => {
 
       const response = await apiService.uploadAnnouncementAttachment(formDataToUpload);
       
+      console.log('Upload response:', response);
+      console.log('Response has data property:', 'data' in response);
+      console.log('Response.data:', response.data);
+      console.log('Response structure:', Object.keys(response));
+      
+      // Handle both possible response structures
+      const fileData = response.data || response;
+      console.log('Using file data:', fileData);
+      
       setSelectedFile(file);
-      setFormData(prev => ({
-        ...prev,
-        attachment_filename: response.filename,
-        attachment_filepath: response.filepath,
-        attachment_size: response.size,
-        attachment_mime_type: response.mime_type
-      }));
+      setFormData(prev => {
+        const newFormData = {
+          ...prev,
+          attachment_filename: fileData.filename,
+          attachment_filepath: fileData.filepath,
+          attachment_size: fileData.size,
+          attachment_mime_type: fileData.mime_type
+        };
+        console.log('Updated form data:', newFormData);
+        return newFormData;
+      });
       
       toast.success('File uploaded successfully');
     } catch (error) {
@@ -597,6 +611,41 @@ const AnnouncementsManagement = () => {
     setShowDeliveryModal(true);
   };
 
+  const handleViewAnnouncementDetail = (announcement) => {
+    console.log('Opening announcement details for:', announcement);
+    console.log('Message:', announcement.message);
+    console.log('Attachment filename:', announcement.attachment_filename);
+    console.log('Attachment filepath:', announcement.attachment_filepath);
+    setSelectedAnnouncement(announcement);
+    setShowDetailModal(true);
+  };
+
+  const handleOpenFile = (filepath, filename, mimeType) => {
+    if (!filepath) return;
+    
+    const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost/School/backend/';
+    const fileUrl = filepath.split('/').pop();
+    const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL : API_BASE_URL + '/';
+    const fileOpenUrl = `${baseUrl}api/admin/public_download_attachment/${fileUrl}`;
+    
+    // Check if it's a viewable file type
+    const viewableTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'text/plain'
+    ];
+    
+    if (viewableTypes.includes(mimeType)) {
+      // Open in new tab for viewable files
+      window.open(fileOpenUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // Force download for other file types
+      handleDownloadAttachment(filepath, filename);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const variants = {
       'draft': 'secondary',
@@ -652,10 +701,10 @@ const AnnouncementsManagement = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h4 className="mb-0">
-            <i className="bi bi-megaphone me-2"></i>
+          <h5 className="mb-0 fw-semibold" style={{ fontSize: '1.1rem' }}>
+            <i className="bi bi-megaphone me-2" style={{ fontSize: '1rem' }}></i>
             Announcements Management
-          </h4>
+          </h5>
           <small className="text-muted">
             Send multi-channel notifications to parents and staff
           </small>
@@ -749,16 +798,31 @@ const AnnouncementsManagement = () => {
                       <td>
                         <div>
                           <div className="fw-medium d-flex align-items-center">
-                            {announcement.title}
+                            <button
+                              type="button"
+                              className="btn btn-link text-dark p-0 text-decoration-none fw-medium"
+                              onClick={() => handleViewAnnouncementDetail(announcement)}
+                              title="View full announcement details"
+                            >
+                              {announcement.title}
+                            </button>
                             {announcement.attachment_filename && (
                               <div className="ms-2 d-inline-flex">
+                                <button
+                                  type="button"
+                                  className="btn btn-link text-success p-0 me-1"
+                                  onClick={() => handleOpenFile(announcement.attachment_filepath, announcement.attachment_filename, announcement.attachment_mime_type)}
+                                  title={`Open: ${announcement.attachment_filename}`}
+                                >
+                                  <i className="bi bi-eye"></i>
+                                </button>
                                 <button
                                   type="button"
                                   className="btn btn-link text-primary p-0 me-1"
                                   onClick={() => handleDownloadAttachment(announcement.attachment_filepath, announcement.attachment_filename)}
                                   title={`Download: ${announcement.attachment_filename}`}
                                 >
-                                  <i className="bi bi-paperclip"></i>
+                                  <i className="bi bi-download"></i>
                                 </button>
                                 <button
                                   type="button"
@@ -772,7 +836,7 @@ const AnnouncementsManagement = () => {
                             )}
                           </div>
                           <small className="text-muted">
-                            {announcement.message.substring(0, 60)}...
+                            {announcement.message.substring(0, 80)}...
                           </small>
                         </div>
                       </td>
@@ -959,19 +1023,10 @@ const AnnouncementsManagement = () => {
       {/* Create/Edit Announcement Modal */}
       <Modal show={showModal} onHide={handleCloseModal} size="lg" centered>
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-announcement text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-megaphone fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">
-                  {editingAnnouncement ? 'Edit Announcement' : 'Create New Announcement'}
-                </h5>
-                <small className="opacity-75">
-                  Send multi-channel notifications to your target audience
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-announcement text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-megaphone me-2"></i>
+              <span>{editingAnnouncement ? 'Edit Announcement' : 'Create New Announcement'}</span>
             </Modal.Title>
           </Modal.Header>
 
@@ -1433,6 +1488,204 @@ const AnnouncementsManagement = () => {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowDeliveryModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Announcement Detail Modal */}
+      <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>
+            <i className="bi bi-megaphone me-2"></i>
+            Announcement Details
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedAnnouncement ? (
+            <div>
+              {/* Title and Status */}
+              <div className="mb-4">
+                <div className="d-flex justify-content-between align-items-start mb-2">
+                  <h5 className="mb-0">{selectedAnnouncement.title || 'No title'}</h5>
+                  {getStatusBadge(selectedAnnouncement.status)}
+                </div>
+                <div className="text-muted small">
+                  Created by {selectedAnnouncement.created_by_name || 'Unknown'} on {selectedAnnouncement.created_at ? new Date(selectedAnnouncement.created_at).toLocaleDateString() : 'Unknown date'}
+                  {selectedAnnouncement.scheduled_at && (
+                    <span className="ms-2">
+                      • Scheduled for {new Date(selectedAnnouncement.scheduled_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Message */}
+              <div className="mb-4">
+                <h6 className="text-primary">
+                  <i className="bi bi-chat-text me-2"></i>Message
+                </h6>
+                <div className="bg-light p-3 rounded" style={{ whiteSpace: 'pre-wrap' }}>
+                  {selectedAnnouncement.message || 'No message content available'}
+                </div>
+                {/* Debug info */}
+                <small className="text-muted mt-1 d-block">
+                  Debug: Message length: {selectedAnnouncement.message?.length || 0}
+                </small>
+              </div>
+
+              {/* Target Information */}
+              <div className="mb-4">
+                <h6 className="text-primary">
+                  <i className="bi bi-people me-2"></i>Target Audience
+                </h6>
+                <div className="d-flex align-items-center">
+                  <Badge bg="light" text="dark" className="me-2">
+                    {getTargetTypeLabel(selectedAnnouncement.target_type)}
+                  </Badge>
+                  {selectedAnnouncement.total_recipients > 0 && (
+                    <span className="text-muted">
+                      {selectedAnnouncement.total_recipients} recipients
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Channels */}
+              <div className="mb-4">
+                <h6 className="text-primary">
+                  <i className="bi bi-broadcast me-2"></i>Notification Channels
+                </h6>
+                <div className="d-flex gap-2">
+                  {selectedAnnouncement.channels?.map((channel) => (
+                    <Badge key={channel} bg="info" className="d-flex align-items-center">
+                      <i className={`${getChannelIcon(channel)} me-1`}></i>
+                      {channel.toUpperCase()}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* File Attachment */}
+              <div className="mb-4">
+                <h6 className="text-primary">
+                  <i className="bi bi-paperclip me-2"></i>Attachment
+                </h6>
+                {selectedAnnouncement.attachment_filename ? (
+                  <div className="border rounded p-3 bg-light">
+                    <div className="d-flex align-items-center justify-content-between">
+                      <div className="d-flex align-items-center">
+                        <i className="bi bi-file-earmark text-primary me-2 fs-5"></i>
+                        <div>
+                          <div className="fw-medium">{selectedAnnouncement.attachment_filename}</div>
+                          <small className="text-muted">
+                            {selectedAnnouncement.attachment_size ? 
+                              `${(selectedAnnouncement.attachment_size / 1024 / 1024).toFixed(2)} MB` : 
+                              'Size unknown'
+                            }
+                          </small>
+                        </div>
+                      </div>
+                      <div className="d-flex gap-1">
+                        <Button
+                          variant="outline-success"
+                          size="sm"
+                          onClick={() => handleOpenFile(
+                            selectedAnnouncement.attachment_filepath, 
+                            selectedAnnouncement.attachment_filename, 
+                            selectedAnnouncement.attachment_mime_type
+                          )}
+                          title={`Open: ${selectedAnnouncement.attachment_filename}`}
+                        >
+                          <i className="bi bi-eye me-1"></i>Open
+                        </Button>
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          onClick={() => handleDownloadAttachment(
+                            selectedAnnouncement.attachment_filepath, 
+                            selectedAnnouncement.attachment_filename
+                          )}
+                          title={`Download: ${selectedAnnouncement.attachment_filename}`}
+                        >
+                          <i className="bi bi-download me-1"></i>Download
+                        </Button>
+                        <Button
+                          variant="outline-info"
+                          size="sm"
+                          onClick={() => handleCopyFileLink(selectedAnnouncement)}
+                          title="Copy file link"
+                        >
+                          <i className="bi bi-link-45deg me-1"></i>Copy Link
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted fst-italic p-2">
+                    No file attached to this announcement
+                  </div>
+                )}
+                {/* Debug info */}
+                <small className="text-muted mt-1 d-block">
+                  Debug: Filename: "{selectedAnnouncement.attachment_filename || 'none'}", 
+                  Filepath: "{selectedAnnouncement.attachment_filepath || 'none'}"
+                </small>
+              </div>
+
+              {/* Delivery Statistics (if available) */}
+              {selectedAnnouncement.status === 'sent' && selectedAnnouncement.total_recipients > 0 && (
+                <div className="mb-3">
+                  <h6 className="text-primary">
+                    <i className="bi bi-graph-up me-2"></i>Delivery Summary
+                  </h6>
+                  <Row>
+                    <Col sm={4}>
+                      <div className="text-center p-2 border rounded">
+                        <div className="h6 mb-0 text-success">{selectedAnnouncement.sent_count || 0}</div>
+                        <small className="text-muted">Sent</small>
+                      </div>
+                    </Col>
+                    {selectedAnnouncement.failed_count > 0 && (
+                      <Col sm={4}>
+                        <div className="text-center p-2 border rounded">
+                          <div className="h6 mb-0 text-danger">{selectedAnnouncement.failed_count}</div>
+                          <small className="text-muted">Failed</small>
+                        </div>
+                      </Col>
+                    )}
+                    <Col sm={4}>
+                      <div className="text-center p-2 border rounded">
+                        <div className="h6 mb-0 text-primary">{selectedAnnouncement.total_recipients}</div>
+                        <small className="text-muted">Total</small>
+                      </div>
+                    </Col>
+                  </Row>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center p-4">
+              <i className="bi bi-exclamation-triangle text-warning display-4 mb-3"></i>
+              <h5>No Announcement Data</h5>
+              <p className="text-muted">No announcement data is available to display.</p>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          {selectedAnnouncement?.status === 'sent' && (
+            <Button 
+              variant="outline-info" 
+              onClick={() => {
+                setShowDetailModal(false);
+                handleViewDeliveryStatus(selectedAnnouncement);
+              }}
+            >
+              <i className="bi bi-graph-up me-2"></i>
+              View Delivery Status
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => setShowDetailModal(false)}>
             Close
           </Button>
         </Modal.Footer>

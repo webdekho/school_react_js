@@ -169,7 +169,8 @@ const ComplaintsManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['complaints']);
-      toast.success('Complaint assigned successfully!');
+      const isReassignment = selectedComplaint?.assigned_to_staff_id;
+      toast.success(isReassignment ? 'Complaint reassigned successfully!' : 'Complaint assigned successfully!');
       setShowAssignModal(false);
       setAssignData({ staff_id: '' });
     },
@@ -299,7 +300,7 @@ const ComplaintsManagement = () => {
 
   const handleAssignComplaint = (complaint) => {
     setSelectedComplaint(complaint);
-    setAssignData({ staff_id: '' });
+    setAssignData({ staff_id: complaint.assigned_to_staff_id || '' });
     setShowAssignModal(true);
   };
 
@@ -376,10 +377,10 @@ const ComplaintsManagement = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h4 className="mb-0">
-            <i className="bi bi-chat-dots me-2"></i>
+          <h5 className="mb-0 fw-semibold" style={{ fontSize: '1.1rem' }}>
+            <i className="bi bi-chat-dots me-2" style={{ fontSize: '1rem' }}></i>
             Complaints Management
-          </h4>
+          </h5>
           <small className="text-muted">
             Track and resolve parent complaints and concerns
           </small>
@@ -601,6 +602,17 @@ const ComplaintsManagement = () => {
                             </Button>
                           )}
                           
+                          {complaint.assigned_to_staff_id && ['new', 'in_progress'].includes(complaint.status) && (
+                            <Button
+                              variant="outline-info"
+                              size="sm"
+                              onClick={() => handleAssignComplaint(complaint)}
+                              title="Reassign to Different Staff"
+                            >
+                              <i className="bi bi-arrow-repeat"></i>
+                            </Button>
+                          )}
+                          
                           {['new', 'in_progress'].includes(complaint.status) && (
                             <Button
                               variant="outline-success"
@@ -675,15 +687,10 @@ const ComplaintsManagement = () => {
       {/* Create Complaint Modal */}
       <Modal show={showModal} onHide={handleCloseModal} size="lg" centered>
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-complaint text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-chat-dots fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">Create New Complaint</h5>
-                <small className="opacity-75">Record a new complaint or concern</small>
-              </div>
+          <Modal.Header className="bg-gradient-complaint text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-chat-dots me-2"></i>
+              <span>Create New Complaint</span>
             </Modal.Title>
           </Modal.Header>
 
@@ -908,7 +915,7 @@ const ComplaintsManagement = () => {
                 <div>
                   <h6>Comments & Updates</h6>
                   <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                    {selectedComplaint.comments.map((comment, index) => (
+                    {selectedComplaint.comments.map((comment) => (
                       <div key={comment.id} className="border-start border-3 border-primary ps-3 mb-3">
                         <div className="d-flex justify-content-between">
                           <strong>{comment.commented_by_name}</strong>
@@ -938,9 +945,17 @@ const ComplaintsManagement = () => {
       {/* Assign Modal */}
       <Modal show={showAssignModal} onHide={() => setShowAssignModal(false)} centered>
         <Modal.Header closeButton>
-          <Modal.Title>Assign Complaint</Modal.Title>
+          <Modal.Title>
+            {selectedComplaint?.assigned_to_staff_id ? 'Reassign Complaint' : 'Assign Complaint'}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          {selectedComplaint?.assigned_to_staff_id && (
+            <div className="mb-3 p-3 bg-light rounded">
+              <small className="text-muted">Currently assigned to:</small>
+              <div className="fw-medium">{selectedComplaint.assigned_to_name}</div>
+            </div>
+          )}
           <Form.Select
             value={assignData.staff_id}
             onChange={(e) => setAssignData({ staff_id: e.target.value })}
@@ -962,7 +977,7 @@ const ComplaintsManagement = () => {
             onClick={() => assignMutation.mutate({ id: selectedComplaint?.id, staff_id: assignData.staff_id })}
             disabled={!assignData.staff_id || assignMutation.isLoading}
           >
-            {assignMutation.isLoading ? <Spinner size="sm" /> : 'Assign'}
+            {assignMutation.isLoading ? <Spinner size="sm" /> : (selectedComplaint?.assigned_to_staff_id ? 'Reassign' : 'Assign')}
           </Button>
         </Modal.Footer>
       </Modal>

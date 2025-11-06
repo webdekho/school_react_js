@@ -24,13 +24,13 @@ const PermissionGuard = ({
 
   // Check if user has required permissions
   const hasAccess = () => {
-    // Admin always has access
-    if (user?.user_type === 'admin') {
+    // Admin and staff always have access
+    if (user?.user_type === 'admin' || user?.user_type === 'staff') {
       return true;
     }
 
-    // For staff, check permissions
-    if (user?.user_type === 'staff') {
+    // For other user types, check permissions (this section preserved for future use)
+    if (user?.user_type === 'other') {
       if (requireAll) {
         // User must have all specified permissions
         return permissions.every(perm => 

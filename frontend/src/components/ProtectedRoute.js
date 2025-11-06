@@ -23,29 +23,19 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (allowedRoles && user && !allowedRoles.includes(user.user_type)) {
-    return (
-      <div className="container-fluid vh-100 d-flex align-items-center justify-content-center">
-        <div className="text-center">
-          <div className="display-1 text-muted mb-4">
-            <i className="bi bi-shield-exclamation"></i>
-          </div>
-          <h2 className="mb-3">Access Denied</h2>
-          <p className="text-muted mb-4">
-            You don't have permission to access this page.
-          </p>
-          <button 
-            className="btn btn-primary"
-            onClick={() => window.history.back()}
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
+    // Redirect to user's appropriate dashboard instead of showing access denied
+    if (user.user_type === 'staff') {
+      return <Navigate to="/staff" replace />;
+    } else if (user.user_type === 'parent') {
+      return <Navigate to="/parent" replace />;
+    } else {
+      // All others go to admin
+      return <Navigate to="/admin" replace />;
+    }
   }
 
   return <>{children}</>;

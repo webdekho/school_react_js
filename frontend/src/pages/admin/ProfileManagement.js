@@ -69,7 +69,7 @@ const ProfileManagement = () => {
   // Change password mutation
   const changePasswordMutation = useMutation({
     mutationFn: async (passwordData) => {
-      const response = await apiService.put('/api/admin/change-password', passwordData);
+      const response = await apiService.put('/api/admin/change_password', passwordData);
       return response.data;
     },
     onSuccess: () => {
@@ -209,7 +209,7 @@ const ProfileManagement = () => {
                 <Row>
                   <Col md={6}>
                     <Form.Group className="mb-3">
-                      <Form.Label>Full Name</Form.Label>
+                      <Form.Label className="text-dark fw-medium">Full Name</Form.Label>
                       <Form.Control
                         type="text"
                         value={profileForm.name}
@@ -221,7 +221,7 @@ const ProfileManagement = () => {
                   </Col>
                   <Col md={6}>
                     <Form.Group className="mb-3">
-                      <Form.Label>Email Address</Form.Label>
+                      <Form.Label className="text-dark fw-medium">Email Address</Form.Label>
                       <Form.Control
                         type="email"
                         value={profileForm.email}
@@ -236,7 +236,7 @@ const ProfileManagement = () => {
                 <Row>
                   <Col md={6}>
                     <Form.Group className="mb-3">
-                      <Form.Label>Phone Number</Form.Label>
+                      <Form.Label className="text-dark fw-medium">Phone Number</Form.Label>
                       <Form.Control
                         type="tel"
                         value={profileForm.phone}
@@ -248,7 +248,7 @@ const ProfileManagement = () => {
                   </Col>
                   <Col md={6}>
                     <Form.Group className="mb-3">
-                      <Form.Label>Emergency Contact</Form.Label>
+                      <Form.Label className="text-dark fw-medium">Emergency Contact</Form.Label>
                       <Form.Control
                         type="tel"
                         value={profileForm.emergency_contact}
@@ -261,7 +261,7 @@ const ProfileManagement = () => {
                 </Row>
 
                 <Form.Group className="mb-3">
-                  <Form.Label>Address</Form.Label>
+                  <Form.Label className="text-dark fw-medium">Address</Form.Label>
                   <Form.Control
                     as="textarea"
                     rows={2}
@@ -273,7 +273,7 @@ const ProfileManagement = () => {
                 </Form.Group>
 
                 <Form.Group className="mb-3">
-                  <Form.Label>Bio / Description</Form.Label>
+                  <Form.Label className="text-dark fw-medium">Bio / Description</Form.Label>
                   <Form.Control
                     as="textarea"
                     rows={3}
@@ -329,7 +329,7 @@ const ProfileManagement = () => {
         <Form onSubmit={handlePasswordSubmit}>
           <Modal.Body>
             <Form.Group className="mb-3">
-              <Form.Label>Current Password</Form.Label>
+              <Form.Label className="text-dark fw-medium">Current Password</Form.Label>
               <Form.Control
                 type="password"
                 value={passwordForm.current_password}
@@ -339,7 +339,7 @@ const ProfileManagement = () => {
             </Form.Group>
 
             <Form.Group className="mb-3">
-              <Form.Label>New Password</Form.Label>
+              <Form.Label className="text-dark fw-medium">New Password</Form.Label>
               <Form.Control
                 type="password"
                 value={passwordForm.new_password}
@@ -353,7 +353,7 @@ const ProfileManagement = () => {
             </Form.Group>
 
             <Form.Group className="mb-3">
-              <Form.Label>Confirm New Password</Form.Label>
+              <Form.Label className="text-dark fw-medium">Confirm New Password</Form.Label>
               <Form.Control
                 type="password"
                 value={passwordForm.confirm_password}

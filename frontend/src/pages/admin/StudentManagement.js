@@ -1,21 +1,87 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, Button, Table, Modal, Form, Alert, Badge, Spinner, Row, Col, InputGroup } from 'react-bootstrap';
+import { Card, Button, Table, Modal, Form, Alert, Badge, Spinner, Row, Col, InputGroup, Accordion } from 'react-bootstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Typeahead } from 'react-bootstrap-typeahead';
+import jsPDF from 'jspdf';
 import { apiService } from '../../services/api';
 import { useAcademicYear } from '../../contexts/AcademicYearContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { ENV_CONFIG } from '../../config/environment';
 import toast from 'react-hot-toast';
 import Pagination from '../../components/common/Pagination';
 import AcademicYearSelector from '../../components/common/AcademicYearSelector';
+import FeeCollectionModal from '../../components/common/FeeCollectionModal';
 import useWindowsModalFix from '../../hooks/useWindowsModalFix';
 import 'react-bootstrap-typeahead/css/Typeahead.css';
+
+// Allergies options for multi-select dropdown
+const ALLERGIES_OPTIONS = [
+  'No known allergies',
+  'Peanut',
+  'Tree nuts (Almond/Cashew/Walnut/Pistachio/Hazelnut/Pecan)',
+  'Milk/Dairy',
+  'Egg',
+  'Soy',
+  'Wheat/Gluten',
+  'Fish',
+  'Shellfish (Prawn/Shrimp/Crab/Lobster)',
+  'Sesame',
+  'Mustard',
+  'Chickpea/Gram/Besan',
+  'Lentils/Pulses',
+  'Food colours/preservatives',
+  'House dust mite',
+  'Pollen (Grass/Tree/Weed)',
+  'Mold/Fungi',
+  'Animal dander (Cat/Dog)',
+  'Cockroach',
+  'Bee/Wasp sting',
+  'Other insect bite (severe)',
+  'Penicillin/Amoxicillin',
+  'NSAIDs (Ibuprofen/Aspirin)',
+  'Sulfa drugs',
+  'Other antibiotic',
+  'Latex',
+  'Nickel',
+  'Fragrances/Cosmetics/Adhesives',
+  'Gelatin (vaccine)',
+  'Egg-protein (vaccine)',
+  'Other (specify)',
+  'Unknown/Not sure'
+];
 
 const StudentManagement = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { getAcademicYearId } = useAcademicYear();
+  const { user } = useAuth();
   const [showModal, setShowModal] = useState(false);
+
+  // Helper function to get full image URL with API_BASE_URL concatenation
+  const getImageUrl = (path) => {
+    if (!path) return '';
+    
+    // If already a full URL, return as is
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    
+    // If it starts with /uploads/, concatenate with API_BASE_URL
+    if (path.startsWith('/uploads/')) {
+      return `${ENV_CONFIG.API_BASE_URL}${path.substring(1)}`;
+    }
+    
+    // If it starts with uploads/ (without leading slash), concatenate with API_BASE_URL
+    if (path.startsWith('uploads/')) {
+      return `${ENV_CONFIG.API_BASE_URL}${path}`;
+    }
+    
+    // For any other relative path, treat as uploads file and concatenate
+    if (!path.startsWith('/') && !path.includes('://')) {
+      return `${ENV_CONFIG.API_BASE_URL}uploads/${path}`;
+    }
+    
+    return path;
+  };
   const safeCloseModal = useWindowsModalFix(showModal);
   const [editingStudent, setEditingStudent] = useState(null);
   const [selectedGrade, setSelectedGrade] = useState('');
@@ -28,9 +94,36 @@ const StudentManagement = () => {
     email: '',
     password: 'password',
     address: '',
-    pincode: ''
+    pincode: '',
+    occupation: '',
+    current_employment: '',
+    company_name: '',
+    best_contact_day: '',
+    best_contact_time: '',
+    kid_likes: '',
+    kid_dislikes: '',
+    kid_aspirations: '',
+    id_proof: '',
+    address_proof: '',
+    parent_photo: ''
   });
   const [parentErrors, setParentErrors] = useState({});
+  const [parentUploadingDocument, setParentUploadingDocument] = useState(false);
+  const [parentPreviewUrls, setParentPreviewUrls] = useState({
+    parent_photo: null,
+    id_proof: null,
+    address_proof: null
+  });
+  const [parentUploadedFiles, setParentUploadedFiles] = useState({
+    parent_photo: '',
+    id_proof: '',
+    address_proof: ''
+  });
+  const parentFileUrls = useRef({
+    parent_photo: '',
+    id_proof: '',
+    address_proof: ''
+  });
   const [formData, setFormData] = useState({
     student_name: '',
     grade_id: '',
@@ -41,15 +134,69 @@ const StudentManagement = () => {
     sam_samagrah_id: '',
     aapar_id: '',
     admission_date: '',
-    parent_id: ''
+    parent_id: '',
+    // Emergency Contact
+    emergency_contact_number: '',
+    emergency_contact_name: '',
+    emergency_contact_relationship: '',
+    gender: '',
+    // Travel Mode
+    travel_mode: '',
+    // Medical Information
+    allergies: [],
+    diabetic: false,
+    lifestyle_diseases: '',
+    asthmatic: false,
+    phobia: false,
+    // Family Doctor
+    doctor_name: '',
+    doctor_contact: '',
+    clinic_address: '',
+    // Blood Group
+    blood_group: '',
+    // Documents
+    student_photo_url: '',
+    id_proof_url: '',
+    address_proof_url: '',
+    // Student Aspirations
+    student_aspirations: ''
   });
   const [errors, setErrors] = useState({});
   const [semesterFees, setSemesterFees] = useState(null);
   const [, setShowSemesterFees] = useState(false);
   
+  // File upload states
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [previewUrls, setPreviewUrls] = useState({
+    student_photo: null,
+    id_proof: null,
+    address_proof: null
+  });
+  
+  // Global storage for uploaded file URLs that persists across renders
+  const [uploadedFiles, setUploadedFiles] = useState({
+    student_photo_url: '',
+    id_proof_url: '',
+    address_proof_url: ''
+  });
+  
+  // Ref to track current file URLs to avoid React state timing issues
+  const currentFileUrls = useRef({
+    student_photo_url: '',
+    id_proof_url: '',
+    address_proof_url: ''
+  });
+  
+  // Medical accordion state
+  const [showMedicalInfo, setShowMedicalInfo] = useState(false);
+  
   // Payment history modal states
   const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
   const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
+
+  // Fee collection modal states
+  const [showFeeCollectionModal, setShowFeeCollectionModal] = useState(false);
+  const [selectedStudentForFeeCollection, setSelectedStudentForFeeCollection] = useState(null);
 
   // Pagination and search states
   const [currentPage, setCurrentPage] = useState(1);
@@ -191,20 +338,18 @@ const StudentManagement = () => {
 
   const parents = Array.isArray(parentsResponse) ? parentsResponse : [];
 
-  // Fetch semester fees for selected grade and division
+  // Fetch semester fees for selected grade only
   const { data: semesterFeesData, isLoading: feesLoading } = useQuery({
-    queryKey: ['semester-fees', formData.grade_id, formData.division_id, getAcademicYearId()],
+    queryKey: ['semester-fees', formData.grade_id],
     queryFn: async () => {
-      if (!formData.grade_id || !formData.division_id || !getAcademicYearId()) return null;
+      if (!formData.grade_id) return null;
       const params = new URLSearchParams({
-        grade_id: formData.grade_id,
-        division_id: formData.division_id,
-        academic_year_id: getAcademicYearId()
+        grade_id: formData.grade_id
       });
       const response = await apiService.get(`/api/admin/semester_fees?${params}`);
       return response.data;
     },
-    enabled: !!(formData.grade_id && formData.division_id && getAcademicYearId())
+    enabled: !!formData.grade_id
   });
 
   // Update semester fees state when data changes
@@ -365,7 +510,35 @@ const StudentManagement = () => {
 
   const handleShowModal = (student = null) => {
     if (student) {
+      console.log('=== EDIT STUDENT DEBUG ===');
+      console.log('Student data:', student);
+      console.log('Raw allergies from DB:', student.allergies);
+      console.log('Allergies type:', typeof student.allergies);
+      
       setEditingStudent(student);
+      
+      const parsedAllergies = (() => {
+        try {
+          if (!student.allergies) {
+            console.log('No allergies data');
+            return [];
+          }
+          if (Array.isArray(student.allergies)) {
+            console.log('Allergies already an array:', student.allergies);
+            return student.allergies;
+          }
+          const parsed = JSON.parse(student.allergies);
+          console.log('Parsed allergies:', parsed);
+          console.log('Is parsed array?', Array.isArray(parsed));
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          console.error('Error parsing allergies:', e, student.allergies);
+          return [];
+        }
+      })();
+      
+      console.log('Final allergies for formData:', parsedAllergies);
+      
       setFormData({
         student_name: student.student_name,
         grade_id: student.grade_id ? student.grade_id.toString() : '',
@@ -376,9 +549,52 @@ const StudentManagement = () => {
         sam_samagrah_id: student.sam_samagrah_id || '',
         aapar_id: student.aapar_id || '',
         admission_date: student.admission_date ? student.admission_date.split(' ')[0] : '',
-        parent_id: student.parent_id ? student.parent_id.toString() : ''
+        parent_id: student.parent_id ? student.parent_id.toString() : '',
+        // Emergency Contact
+        emergency_contact_number: student.emergency_contact_number || '',
+        emergency_contact_name: student.emergency_contact_name || '',
+        emergency_contact_relationship: student.emergency_contact_relationship || '',
+        gender: student.gender || '',
+        // Travel Mode
+        travel_mode: student.travel_mode || '',
+        // Medical Information
+        allergies: parsedAllergies,
+        diabetic: student.diabetic === 1 || student.diabetic === '1',
+        lifestyle_diseases: student.lifestyle_diseases || '',
+        asthmatic: student.asthmatic === 1 || student.asthmatic === '1',
+        phobia: student.phobia === 1 || student.phobia === '1',
+        // Family Doctor
+        doctor_name: student.doctor_name || '',
+        doctor_contact: student.doctor_contact || '',
+        clinic_address: student.clinic_address || '',
+        // Blood Group
+        blood_group: student.blood_group || '',
+        // Documents
+        student_photo_url: student.student_photo_url || '',
+        id_proof_url: student.id_proof_url || '',
+        address_proof_url: student.address_proof_url || '',
+        // Student Aspirations
+        student_aspirations: student.student_aspirations || ''
+      });
+      
+      // Sync all file URL storage with existing student data
+      const existingUrls = {
+        student_photo_url: student.student_photo_url || '',
+        id_proof_url: student.id_proof_url || '',
+        address_proof_url: student.address_proof_url || ''
+      };
+      
+      currentFileUrls.current = existingUrls;
+      setUploadedFiles(existingUrls);
+      
+      // Set preview URLs if documents exist (process through getImageUrl for correct base URL)
+      setPreviewUrls({
+        student_photo: student.student_photo_url ? getImageUrl(student.student_photo_url) : null,
+        id_proof: student.id_proof_url ? getImageUrl(student.id_proof_url) : null,
+        address_proof: student.address_proof_url ? getImageUrl(student.address_proof_url) : null
       });
     } else {
+      console.log('=== CREATE NEW STUDENT ===');
       setEditingStudent(null);
       setFormData({
         student_name: '',
@@ -390,7 +606,49 @@ const StudentManagement = () => {
         sam_samagrah_id: '',
         aapar_id: '',
         admission_date: '',
-        parent_id: ''
+        parent_id: '',
+        // Emergency Contact
+        emergency_contact_number: '',
+        emergency_contact_name: '',
+        emergency_contact_relationship: '',
+        gender: '',
+        // Travel Mode
+        travel_mode: '',
+        // Medical Information
+        allergies: [],
+        diabetic: false,
+        lifestyle_diseases: '',
+        asthmatic: false,
+        phobia: false,
+        // Family Doctor
+        doctor_name: '',
+        doctor_contact: '',
+        clinic_address: '',
+        // Blood Group
+        blood_group: '',
+        // Documents
+        student_photo_url: '',
+        id_proof_url: '',
+        address_proof_url: '',
+        // Student Aspirations
+        student_aspirations: ''
+      });
+      
+      // Reset all file URL storage for new student
+      const emptyUrls = {
+        student_photo_url: '',
+        id_proof_url: '',
+        address_proof_url: ''
+      };
+      
+      currentFileUrls.current = emptyUrls;
+      setUploadedFiles(emptyUrls);
+      localStorage.removeItem('student_form_files');
+      
+      setPreviewUrls({
+        student_photo: null,
+        id_proof: null,
+        address_proof: null
       });
     }
     setErrors({});
@@ -410,11 +668,34 @@ const StudentManagement = () => {
       sam_samagrah_id: '',
       aapar_id: '',
       admission_date: '',
-      parent_id: ''
+      parent_id: '',
+      emergency_contact_number: '',
+      emergency_contact_name: '',
+      emergency_contact_relationship: '',
+      gender: '',
+      travel_mode: '',
+      allergies: [],
+      diabetic: false,
+      lifestyle_diseases: '',
+      asthmatic: false,
+      phobia: false,
+      doctor_name: '',
+      doctor_contact: '',
+      clinic_address: '',
+      blood_group: '',
+      student_photo_url: '',
+      id_proof_url: '',
+      address_proof_url: '',
+      student_aspirations: ''
     });
     setErrors({});
     setSemesterFees(null);
     setShowSemesterFees(false);
+    setPreviewUrls({
+      student_photo: null,
+      id_proof: null,
+      address_proof: null
+    });
   };
 
   const handleInputChange = (e) => {
@@ -423,6 +704,17 @@ const StudentManagement = () => {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+  };
+
+  const handleAllergyToggle = (allergy) => {
+    setFormData(prev => {
+      const currentAllergies = Array.isArray(prev.allergies) ? prev.allergies : [];
+      const exists = currentAllergies.includes(allergy);
+      const updated = exists
+        ? currentAllergies.filter(item => item !== allergy)
+        : [...currentAllergies, allergy];
+      return { ...prev, allergies: updated };
+    });
   };
 
   const validateForm = () => {
@@ -451,17 +743,91 @@ const StudentManagement = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    console.log('Form submitted');
+    console.log('Form data:', formData);
+    
+    if (!validateForm()) {
+      console.log('Validation failed', errors);
+      return;
+    }
+
+    console.log('Validation passed');
+
+    // Log before creating submit data
+    console.log('FormData before submit:', {
+      student_photo_url: formData.student_photo_url,
+      id_proof_url: formData.id_proof_url,
+      address_proof_url: formData.address_proof_url
+    });
 
     const submitData = {
-      ...formData,
+      student_name: formData.student_name,
+      grade_id: formData.grade_id,
+      division_id: formData.division_id,
+      roll_number: formData.roll_number,
+      residential_address: formData.residential_address,
+      pincode: formData.pincode,
+      sam_samagrah_id: formData.sam_samagrah_id,
+      aapar_id: formData.aapar_id,
+      admission_date: formData.admission_date,
       parent_id: parseInt(formData.parent_id),
-      academic_year_id: getAcademicYearId() // Add academic year ID
+      academic_year_id: getAcademicYearId(),
+      // Emergency Contact
+      emergency_contact_number: formData.emergency_contact_number,
+      gender: formData.gender,
+      // Travel Mode
+      travel_mode: formData.travel_mode,
+      // Medical Information
+      allergies: JSON.stringify(formData.allergies),
+      diabetic: formData.diabetic ? '1' : '0',
+      lifestyle_diseases: formData.lifestyle_diseases,
+      asthmatic: formData.asthmatic ? '1' : '0',
+      phobia: formData.phobia ? '1' : '0',
+      // Family Doctor
+      doctor_name: formData.doctor_name,
+      doctor_contact: formData.doctor_contact,
+      clinic_address: formData.clinic_address,
+      // Blood Group
+      blood_group: formData.blood_group,
+      // Documents - Use multiple fallbacks to ensure URLs are included
+      student_photo_url: uploadedFiles.student_photo_url || currentFileUrls.current.student_photo_url || formData.student_photo_url || '',
+      id_proof_url: uploadedFiles.id_proof_url || currentFileUrls.current.id_proof_url || formData.id_proof_url || '',
+      address_proof_url: uploadedFiles.address_proof_url || currentFileUrls.current.address_proof_url || formData.address_proof_url || '',
+      // Student Aspirations
+      student_aspirations: formData.student_aspirations
     };
 
+    console.log('=== COMPREHENSIVE FORM SUBMISSION DEBUG ===');
+    console.log('1. FormData state:', {
+      student_photo_url: formData.student_photo_url,
+      id_proof_url: formData.id_proof_url,
+      address_proof_url: formData.address_proof_url,
+      student_aspirations: formData.student_aspirations
+    });
+    console.log('2. UploadedFiles state:', uploadedFiles);
+    console.log('3. CurrentFileUrls ref:', currentFileUrls.current);
+    console.log('4. LocalStorage backup:', JSON.parse(localStorage.getItem('student_form_files') || '{}'));
+    console.log('5. FINAL submitData URLs:', {
+      student_photo_url: submitData.student_photo_url,
+      id_proof_url: submitData.id_proof_url,
+      address_proof_url: submitData.address_proof_url,
+      student_aspirations: submitData.student_aspirations
+    });
+    console.log('6. Full submit data:', submitData);
+    
+    // Alert if URLs are still empty
+    if (!submitData.student_photo_url && !submitData.id_proof_url && !submitData.address_proof_url) {
+      console.warn('⚠️ WARNING: No file URLs found in submit data!');
+    } else {
+      console.log('✅ File URLs found in submit data');
+    }
+    console.log('=== END DEBUG ===');
+
     if (editingStudent) {
+      console.log('Updating student:', editingStudent.id);
       updateMutation.mutate({ id: editingStudent.id, data: submitData });
     } else {
+      console.log('Creating new student');
       createMutation.mutate(submitData);
     }
   };
@@ -479,9 +845,35 @@ const StudentManagement = () => {
       email: '',
       password: 'password',
       address: '',
-      pincode: ''
+      pincode: '',
+      occupation: '',
+      current_employment: '',
+      company_name: '',
+      best_contact_day: '',
+      best_contact_time: '',
+      kid_likes: '',
+      kid_dislikes: '',
+      kid_aspirations: '',
+      id_proof: '',
+      address_proof: '',
+      parent_photo: ''
     });
     setParentErrors({});
+    parentFileUrls.current = {
+      parent_photo: '',
+      id_proof: '',
+      address_proof: ''
+    };
+    setParentUploadedFiles({
+      parent_photo: '',
+      id_proof: '',
+      address_proof: ''
+    });
+    setParentPreviewUrls({
+      parent_photo: null,
+      id_proof: null,
+      address_proof: null
+    });
     setShowParentModal(true);
   };
 
@@ -493,9 +885,35 @@ const StudentManagement = () => {
       email: '',
       password: 'password',
       address: '',
-      pincode: ''
+      pincode: '',
+      occupation: '',
+      current_employment: '',
+      company_name: '',
+      best_contact_day: '',
+      best_contact_time: '',
+      kid_likes: '',
+      kid_dislikes: '',
+      kid_aspirations: '',
+      id_proof: '',
+      address_proof: '',
+      parent_photo: ''
     });
     setParentErrors({});
+    parentFileUrls.current = {
+      parent_photo: '',
+      id_proof: '',
+      address_proof: ''
+    };
+    setParentUploadedFiles({
+      parent_photo: '',
+      id_proof: '',
+      address_proof: ''
+    });
+    setParentPreviewUrls({
+      parent_photo: null,
+      id_proof: null,
+      address_proof: null
+    });
   };
 
   const handleParentInputChange = (e) => {
@@ -529,7 +947,529 @@ const StudentManagement = () => {
   const handleParentSubmit = (e) => {
     e.preventDefault();
     if (!validateParentForm()) return;
-    createParentMutation.mutate(parentFormData);
+    
+    const submitData = {
+      ...parentFormData,
+      parent_photo: parentUploadedFiles.parent_photo || parentFileUrls.current.parent_photo || parentFormData.parent_photo || '',
+      id_proof: parentUploadedFiles.id_proof || parentFileUrls.current.id_proof || parentFormData.id_proof || '',
+      address_proof: parentUploadedFiles.address_proof || parentFileUrls.current.address_proof || parentFormData.address_proof || ''
+    };
+    
+    createParentMutation.mutate(submitData);
+  };
+
+  // Parent file upload handler
+  const handleParentFileUpload = async (e, documentType) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('File size must be less than 2MB');
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = documentType === 'parent_photo'
+      ? ['image/jpeg', 'image/jpg', 'image/png']
+      : ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error(`Invalid file type. Allowed: ${documentType === 'parent_photo' ? 'JPG, PNG' : 'JPG, PNG, PDF'}`);
+      return;
+    }
+
+    setParentUploadingDocument(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
+      uploadFormData.append('document_type', documentType);
+
+      const response = await apiService.uploadParentDocument(uploadFormData);
+
+      const fileUrl = response.data?.url || response.url;
+
+      if (!fileUrl) {
+        throw new Error('No file URL returned from upload');
+      }
+
+      const fieldName = documentType === 'parent_photo' ? 'parent_photo' : documentType;
+
+      // Triple update: ref, uploadedFiles state, and formData
+      parentFileUrls.current[fieldName] = fileUrl;
+
+      setParentUploadedFiles(prev => ({
+        ...prev,
+        [fieldName]: fileUrl
+      }));
+
+      setParentFormData(prevFormData => ({
+        ...prevFormData,
+        [fieldName]: fileUrl
+      }));
+
+      // Set preview URL
+      setParentPreviewUrls(prev => ({
+        ...prev,
+        [documentType]: file.type.includes('pdf') ? fileUrl : URL.createObjectURL(file)
+      }));
+
+      toast.success('Document uploaded successfully!');
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(error.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setParentUploadingDocument(false);
+    }
+  };
+
+  // File upload handler
+  const handleFileUpload = async (e, documentType) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('File size must be less than 2MB');
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = documentType === 'student_photo' 
+      ? ['image/jpeg', 'image/jpg', 'image/png']
+      : ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+    
+    if (!allowedTypes.includes(file.type)) {
+      toast.error(`Invalid file type. Allowed: ${documentType === 'student_photo' ? 'JPG, PNG' : 'JPG, PNG, PDF'}`);
+      return;
+    }
+
+    setUploadingDocument(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
+      uploadFormData.append('document_type', documentType);
+
+      console.log('Uploading document type:', documentType);
+
+      // Use the dedicated upload method
+      const response = await apiService.uploadStudentDocument(uploadFormData);
+
+      console.log('=== FILE UPLOAD COMPLETED ===');
+      console.log('Upload response:', response);
+      console.log('Document type:', documentType);
+      
+      // Fix: URL is in response.data.url, not response.url
+      const fileUrl = response.data?.url || response.url;
+      console.log('Extracted file URL:', fileUrl);
+      
+      if (!fileUrl) {
+        console.error('❌ No file URL found in response!');
+        console.log('Response structure:', JSON.stringify(response, null, 2));
+        throw new Error('No file URL returned from upload');
+      }
+      
+      // Map document type to correct form field name
+      const fieldName = `${documentType}_url`;
+      
+      console.log('Setting field:', fieldName, 'to:', fileUrl);
+      
+      // Triple update: ref, formData, and separate uploadedFiles state
+      currentFileUrls.current[fieldName] = fileUrl;
+      
+      // Update the dedicated uploaded files state
+      setUploadedFiles(prev => ({
+        ...prev,
+        [fieldName]: fileUrl
+      }));
+      
+      // Also update formData for consistency
+      setFormData(prevFormData => ({
+        ...prevFormData,
+        [fieldName]: fileUrl
+      }));
+      
+      console.log('=== FILE UPLOAD COMPLETED ===');
+      console.log('Field:', fieldName);
+      console.log('URL:', fileUrl);
+      console.log('Stored in uploadedFiles state for form submission');
+      
+      // Store in localStorage as backup
+      localStorage.setItem('student_form_files', JSON.stringify({
+        ...JSON.parse(localStorage.getItem('student_form_files') || '{}'),
+        [fieldName]: fileUrl
+      }));
+
+      // Set preview URL (ensure it has correct base URL)
+      setPreviewUrls(prev => ({
+        ...prev,
+        [documentType]: getImageUrl(fileUrl)
+      }));
+
+      toast.success(`Document uploaded successfully! URL: ${fileUrl}`);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(error.response?.data?.message || error.message || 'Failed to upload document');
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  // Generate Student ID Card with Professional Design
+  const generateStudentIDCard = async (student) => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: [54, 85.6] // Credit card size in landscape (width, height)
+    });
+
+    const barcodeValue = student.roll_number || student.id?.toString() || 'STUDENT';
+    
+    // Load school logo
+    const img = new Image();
+    img.src = '/logo.png';
+    
+    img.onload = async () => {
+      try {
+        // Blue Header Background
+        doc.setFillColor(70, 130, 180); // Steel blue
+        doc.rect(0, 0, 85.6, 15, 'F');
+
+        // Add logo with white circle background
+        doc.setFillColor(255, 255, 255);
+        doc.circle(9, 7.5, 5.5, 'F');
+        try {
+          doc.addImage(img, 'PNG', 5, 3.5, 8, 8);
+        } catch (error) {
+          console.error('Error adding logo:', error);
+        }
+
+        // School name
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('The Trivandrum Scottish School', 45, 6, { align: 'center' });
+        
+        doc.setFontSize(4.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Thundathil, Kariyavattom, Trivandrum - 695581', 45, 9.5, { align: 'center' });
+        
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('STUDENT IDENTITY CARD', 45, 12.5, { align: 'center' });
+
+        // White card body
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 15, 85.6, 34, 'F');
+
+        // Red left accent bar
+        doc.setFillColor(220, 53, 69);
+        doc.rect(0, 15, 2.5, 34, 'F');
+
+        // Photo frame
+        doc.setFillColor(250, 250, 250);
+        doc.rect(5, 18, 20, 26, 'F');
+        doc.setDrawColor(70, 130, 180);
+        doc.setLineWidth(0.4);
+        doc.rect(5, 18, 20, 26);
+        
+        // Load and add student photo if available
+        if (student.student_photo_url) {
+          try {
+            const studentPhoto = new Image();
+            studentPhoto.crossOrigin = 'anonymous';
+            studentPhoto.src = getImageUrl(student.student_photo_url);
+            
+            // Wait for student photo to load
+            await new Promise((resolve, reject) => {
+              studentPhoto.onload = () => {
+                try {
+                  // Add student photo fitted to the frame
+                  doc.addImage(studentPhoto, 'JPEG', 5.5, 18.5, 19, 25);
+                  resolve();
+                } catch (error) {
+                  console.error('Error adding student photo:', error);
+                  // Fallback to placeholder text
+                  doc.setFontSize(7);
+                  doc.setTextColor(180, 180, 180);
+                  doc.setFont('helvetica', 'normal');
+                  doc.text('PHOTO', 15, 32, { align: 'center' });
+                  resolve();
+                }
+              };
+              studentPhoto.onerror = () => {
+                console.error('Failed to load student photo');
+                // Fallback to placeholder text
+                doc.setFontSize(7);
+                doc.setTextColor(180, 180, 180);
+                doc.setFont('helvetica', 'normal');
+                doc.text('PHOTO', 15, 32, { align: 'center' });
+                resolve();
+              };
+            });
+          } catch (error) {
+            console.error('Error loading student photo:', error);
+            // Fallback to placeholder text
+            doc.setFontSize(7);
+            doc.setTextColor(180, 180, 180);
+            doc.setFont('helvetica', 'normal');
+            doc.text('PHOTO', 15, 32, { align: 'center' });
+          }
+        } else {
+          // No photo available, show placeholder
+          doc.setFontSize(7);
+          doc.setTextColor(180, 180, 180);
+          doc.setFont('helvetica', 'normal');
+          doc.text('PHOTO', 15, 32, { align: 'center' });
+        }
+
+        // Student details
+        doc.setTextColor(0, 0, 0);
+        const detailsX = 28;
+        let y = 21;
+        
+        // Name
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('NAME', detailsX, y);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        const nameText = student.student_name.length > 25 ? 
+                         student.student_name.substring(0, 25) : 
+                         student.student_name;
+        doc.text(nameText, detailsX, y + 3);
+        y += 7;
+
+        // Roll Number
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('ROLL NO', detailsX, y);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        doc.text(student.roll_number, detailsX, y + 3);
+        y += 7;
+
+        // Class badge
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('CLASS', detailsX, y);
+        
+        doc.setFillColor(70, 130, 180);
+        doc.roundedRect(detailsX, y + 0.5, 28, 4, 1, 1, 'F');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text(`${student.grade_name} - ${student.division_name}`, detailsX + 14, y + 3.5, { align: 'center' });
+        y += 8;  // Increased top margin
+
+        // Blood Group and Emergency Contact in single row
+        const emergencyNumber = student.emergency_contact_number || formData.emergency_contact_number || 'N/A';
+        const bloodGroup = student.blood_group || formData.blood_group || 'N/A';
+        
+        // Blood Group (Left side)
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('BLOOD:', detailsX, y);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(220, 53, 69);
+        doc.text(bloodGroup, detailsX + 10, y);
+        
+        // Emergency Contact (Right side)
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('EMERGENCY:', detailsX + 24, y);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text(emergencyNumber, detailsX + 38, y);
+
+        // Footer section at bottom
+        doc.setFillColor(245, 245, 245);
+        doc.rect(0, 48.5, 85.6, 5.5, 'F');
+        
+        // Draw high-quality, scannable footer with bottom margin
+        doc.setDrawColor(0, 0, 0);
+        const startX = 22.5;  // Centered position
+        const footerWidth = 40;  // Reduced width for compression
+        const footerY = 49;
+        const footerHeight = 4;  // Increased height for better scanning
+        
+        // Generate high-density footer pattern based on roll number
+        const rollNum = barcodeValue.toString();
+        const totalBars = 60;  // Adjusted for spacing
+        const barSpacing = 0.15;  // Space between bars (mm)
+        
+        // Draw vertical lines for professional footer with spacing
+        for (let i = 0; i < totalBars; i++) {
+          // Create consistent scannable pattern
+          const charCode = i < rollNum.length ? rollNum.charCodeAt(i % rollNum.length) : (i * 13) % 128;
+          const isThick = (charCode % 3 === 0) || (i % 2 === 0);
+          const isTall = (charCode % 5 !== 0);
+          
+          const lineWidth = isThick ? 0.5 : 0.25;  // Bar width
+          const lineHeight = isTall ? footerHeight : footerHeight * 0.75;
+          const x = startX + (i * ((footerWidth / totalBars) + barSpacing));
+          
+          doc.setLineWidth(lineWidth);
+          doc.line(x, footerY, x, footerY + lineHeight);
+        }
+
+        // Card border
+        doc.setDrawColor(70, 130, 180);
+        doc.setLineWidth(0.5);
+        doc.rect(0, 0, 85.6, 54);
+
+        // Save the PDF
+        doc.save(`${student.student_name.replace(/\s+/g, '_')}_ID_Card.pdf`);
+        toast.success('ID Card generated successfully!');
+      } catch (error) {
+        console.error('Error generating ID card:', error);
+        toast.error('Error generating ID card');
+      }
+    };
+
+    img.onerror = async () => {
+      console.error('Failed to load logo, generating ID card without logo');
+      
+      try {
+        // Same design without logo
+        doc.setFillColor(70, 130, 180);
+        doc.rect(0, 0, 85.6, 15, 'F');
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('The Trivandrum Scottish School', 42.8, 6, { align: 'center' });
+        
+        doc.setFontSize(4.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Thundathil, Kariyavattom, Trivandrum - 695581', 42.8, 9.5, { align: 'center' });
+        
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('STUDENT IDENTITY CARD', 42.8, 12.5, { align: 'center' });
+
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 15, 85.6, 34, 'F');
+        
+        doc.setFillColor(220, 53, 69);
+        doc.rect(0, 15, 2.5, 34, 'F');
+
+        doc.setFillColor(250, 250, 250);
+        doc.rect(5, 18, 20, 26, 'F');
+        doc.setDrawColor(70, 130, 180);
+        doc.rect(5, 18, 20, 26);
+        doc.setFontSize(7);
+        doc.setTextColor(180, 180, 180);
+        doc.text('PHOTO', 15, 32, { align: 'center' });
+
+        const detailsX = 28;
+        let y = 21;
+        
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('NAME', detailsX, y);
+        doc.setFontSize(7);
+        doc.setTextColor(0, 0, 0);
+        doc.text(student.student_name.substring(0, 25), detailsX, y + 3);
+        
+        y += 7;
+        doc.setFontSize(6);
+        doc.setTextColor(100, 100, 100);
+        doc.text('ROLL NO', detailsX, y);
+        doc.setFontSize(7);
+        doc.setTextColor(0, 0, 0);
+        doc.text(student.roll_number, detailsX, y + 3);
+        
+        y += 7;
+        doc.setFontSize(6);
+        doc.setTextColor(100, 100, 100);
+        doc.text('CLASS', detailsX, y);
+        doc.setFillColor(70, 130, 180);
+        doc.roundedRect(detailsX, y + 0.5, 28, 4, 1, 1, 'F');
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`${student.grade_name} - ${student.division_name}`, detailsX + 14, y + 3.5, { align: 'center' });
+        y += 7;
+
+        // Blood Group and Emergency Contact in single row
+        const emergencyNumber = student.emergency_contact_number || formData.emergency_contact_number || 'N/A';
+        const bloodGroup = student.blood_group || formData.blood_group || 'N/A';
+        
+        // Blood Group (Left side)
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('BLOOD:', detailsX, y);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(220, 53, 69);
+        doc.text(bloodGroup, detailsX + 10, y);
+        
+        // Emergency Contact (Right side)
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text('EMERGENCY:', detailsX + 24, y);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text(emergencyNumber, detailsX + 38, y);
+
+        // Footer section
+        doc.setFillColor(245, 245, 245);
+        doc.rect(0, 48.5, 85.6, 5.5, 'F');
+        
+        // Draw high-quality, scannable footer with bottom margin
+        doc.setDrawColor(0, 0, 0);
+        const startX = 22.5;  // Centered position
+        const footerWidth = 40;  // Reduced width for compression
+        const footerY = 49;
+        const footerHeight = 4;  // Increased height for better scanning
+        
+        // Generate high-density footer pattern based on roll number
+        const rollNum = barcodeValue.toString();
+        const totalBars = 60;  // Adjusted for spacing
+        const barSpacing = 0.15;  // Space between bars (mm)
+        
+        // Draw vertical lines for professional footer with spacing
+        for (let i = 0; i < totalBars; i++) {
+          // Create consistent scannable pattern
+          const charCode = i < rollNum.length ? rollNum.charCodeAt(i % rollNum.length) : (i * 13) % 128;
+          const isThick = (charCode % 3 === 0) || (i % 2 === 0);
+          const isTall = (charCode % 5 !== 0);
+          
+          const lineWidth = isThick ? 0.5 : 0.25;  // Bar width
+          const lineHeight = isTall ? footerHeight : footerHeight * 0.75;
+          const x = startX + (i * ((footerWidth / totalBars) + barSpacing));
+          
+          doc.setLineWidth(lineWidth);
+          doc.line(x, footerY, x, footerY + lineHeight);
+        }
+
+        doc.setDrawColor(70, 130, 180);
+        doc.setLineWidth(0.5);
+        doc.rect(0, 0, 85.6, 54);
+
+        doc.save(`${student.student_name.replace(/\s+/g, '_')}_ID_Card.pdf`);
+        toast.success('ID Card generated successfully!');
+      } catch (error) {
+        console.error('Error in fallback generation:', error);
+        toast.error('Error generating ID card');
+      }
+    };
   };
 
   // Pagination handlers
@@ -567,6 +1507,170 @@ const StudentManagement = () => {
   const handleClosePaymentHistory = () => {
     setShowPaymentHistoryModal(false);
     setSelectedStudentForHistory(null);
+  };
+
+  // Fee collection handlers
+  const handleShowFeeCollection = (student) => {
+    setSelectedStudentForFeeCollection(student);
+    setShowFeeCollectionModal(true);
+  };
+
+  const handleCloseFeeCollection = () => {
+    setShowFeeCollectionModal(false);
+    setSelectedStudentForFeeCollection(null);
+  };
+
+  // PDF download handler
+  const downloadPaymentHistoryPDF = (student, paymentData) => {
+    // Calculate totals
+    const totalPaid = paymentData.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
+    const totalTransactions = paymentData.length;
+
+    // Create HTML content for PDF
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Payment History - ${student.student_name}</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            line-height: 1.4;
+          }
+          .header { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            padding-bottom: 20px;
+            border-bottom: 2px solid #333;
+          }
+          .student-info { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            margin-bottom: 20px; 
+            border-radius: 5px;
+          }
+          .summary { 
+            display: flex; 
+            justify-content: space-around; 
+            margin: 20px 0; 
+            padding: 15px;
+            background: #e8f5e8;
+            border-radius: 5px;
+          }
+          .summary-item { 
+            text-align: center; 
+          }
+          .summary-value { 
+            font-size: 18px; 
+            font-weight: bold; 
+            color: #28a745;
+          }
+          table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 20px;
+          }
+          th, td { 
+            border: 1px solid #ddd; 
+            padding: 8px; 
+            text-align: left;
+          }
+          th { 
+            background-color: #f8f9fa; 
+            font-weight: bold;
+          }
+          .amount { 
+            text-align: right; 
+            font-weight: bold;
+            color: #28a745;
+          }
+          .footer { 
+            margin-top: 30px; 
+            text-align: center; 
+            font-size: 12px; 
+            color: #666;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Payment History Report</h1>
+          <p>Generated on ${new Date().toLocaleDateString()}</p>
+        </div>
+        
+        <div class="student-info">
+          <h3>Student Information</h3>
+          <p><strong>Name:</strong> ${student.student_name}</p>
+          <p><strong>Roll Number:</strong> ${student.roll_number}</p>
+          <p><strong>Grade:</strong> ${student.grade_name} - ${student.division_name}</p>
+        </div>
+
+        <div class="summary">
+          <div class="summary-item">
+            <div class="summary-value">₹${totalPaid.toLocaleString()}</div>
+            <div>Total Paid</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-value">${totalTransactions}</div>
+            <div>Transactions</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-value">${totalTransactions}</div>
+            <div>Completed</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Receipt #</th>
+              <th>Date</th>
+              <th>Category</th>
+              <th>Amount</th>
+              <th>Payment Method</th>
+              <th>Collected By</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${paymentData.map(payment => `
+              <tr>
+                <td>${payment.receipt_number}</td>
+                <td>${new Date(payment.collection_date).toLocaleDateString()}</td>
+                <td>${payment.primary_category || payment.fee_type_name || 'N/A'}</td>
+                <td class="amount">₹${parseFloat(payment.amount).toLocaleString()}</td>
+                <td>${payment.payment_method.toUpperCase()}</td>
+                <td>${payment.collected_by_name || 'N/A'}</td>
+                <td><span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 3px;">Paid</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <p>This is a computer-generated report. School Management System.</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Create a new window and write the HTML content
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // Wait for content to load then trigger print dialog
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    };
+
+    toast.success('PDF download initiated');
   };
 
   if (isLoading) {
@@ -715,13 +1819,10 @@ const StudentManagement = () => {
                       <small className="text-success d-block">
                         Paid: ₹{(student.total_paid || 0).toLocaleString()}
                       </small>
-                      {student.mandatory_fees && student.optional_fees && (
+                      {student.mandatory_fees && (
                         <div>
                           <small className="text-danger d-block">
-                            Mandatory Due: ₹{(student.mandatory_fees || 0).toLocaleString()}
-                          </small>
-                          <small className="text-muted">
-                            Optional Due: ₹{(student.optional_fees || 0).toLocaleString()}
+                            Due Fee: ₹{(student.mandatory_fees || 0).toLocaleString()}
                           </small>
                         </div>
                       )}
@@ -736,10 +1837,26 @@ const StudentManagement = () => {
                         <Button
                           variant="outline-success"
                           size="sm"
+                          onClick={() => handleShowFeeCollection(student)}
+                          title="Collect Fee"
+                        >
+                          <i className="bi bi-currency-rupee"></i>
+                        </Button>
+                        <Button
+                          variant="outline-info"
+                          size="sm"
                           onClick={() => handleShowPaymentHistory(student)}
                           title="View Payment History"
                         >
                           <i className="bi bi-receipt"></i>
+                        </Button>
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          onClick={() => generateStudentIDCard(student)}
+                          title="Generate ID Card"
+                        >
+                          <i className="bi bi-card-heading"></i>
                         </Button>
                         <Button
                           variant="outline-primary"
@@ -798,17 +1915,10 @@ const StudentManagement = () => {
       {/* Add/Edit Student Modal */}
       <Modal show={showModal} onHide={handleCloseModal} size="xl" centered>
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-success text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-people fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">{editingStudent ? 'Edit Student' : 'Add New Student'}</h5>
-                <small className="opacity-75">
-                  {editingStudent ? 'Update student information' : 'Register a new student to the system'}
-                </small>
-              </div>
+          <Modal.Header className="bg-gradient-success text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-people me-2"></i>
+              <span>{editingStudent ? 'Edit Student' : 'Add New Student'}</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleSubmit}>
@@ -909,6 +2019,28 @@ const StudentManagement = () => {
                         {errors.division_id}
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="row mb-4">
+                <div className="col-md-6 mb-3">
+                  <div className="form-group">
+                    <label className="form-label text-muted mb-2">
+                      <i className="bi bi-gender-ambiguous me-2"></i>Gender *
+                    </label>
+                    <Form.Select
+                      name="gender"
+                      value={formData.gender}
+                      onChange={handleInputChange}
+                      className="form-select-lg"
+                      style={{ minHeight: '50px' }}
+                    >
+                      <option value="">Select Gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </Form.Select>
                   </div>
                 </div>
               </div>
@@ -1104,244 +2236,583 @@ const StudentManagement = () => {
                 </div>
               </div>
 
-              {/* Semester Fees Information */}
+              {/* Emergency Contact Section */}
               <div className="section-header mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h6 className="text-muted mb-0">
-                    <i className="bi bi-currency-rupee me-2"></i>
-                    Fee Information
-                  </h6>
-                  {formData.grade_id && formData.division_id && (
-                    <small className="text-muted">
-                      Based on Grade & Division selection
-                    </small>
-                  )}
+                <h6 className="text-primary mb-3">
+                  <i className="bi bi-telephone-plus me-2"></i>Emergency Contact
+                </h6>
+                <hr className="section-divider" />
+              </div>
+
+              <div className="row mb-4">
+                <div className="col-md-4 mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="emergency_contact_name"
+                      value={formData.emergency_contact_name}
+                      onChange={handleInputChange}
+                      placeholder="Emergency Contact Name"
+                      maxLength={100}
+                      className="form-control-lg"
+                      id="emergencyContactName"
+                    />
+                    <label htmlFor="emergencyContactName" className="text-muted">
+                      <i className="bi bi-person me-2"></i>Emergency Contact Name
+                    </label>
+                  </div>
+                </div>
+                <div className="col-md-4 mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="emergency_contact_relationship"
+                      value={formData.emergency_contact_relationship}
+                      onChange={handleInputChange}
+                      placeholder="Relationship"
+                      maxLength={50}
+                      className="form-control-lg"
+                      id="emergencyContactRelationship"
+                    />
+                    <label htmlFor="emergencyContactRelationship" className="text-muted">
+                      <i className="bi bi-people me-2"></i>Relationship (e.g., Father, Mother, Guardian)
+                    </label>
+                  </div>
+                </div>
+                <div className="col-md-4 mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="emergency_contact_number"
+                      value={formData.emergency_contact_number}
+                      onChange={handleInputChange}
+                      placeholder="Emergency Contact Number"
+                      maxLength={15}
+                      pattern="[0-9]{10}"
+                      className="form-control-lg"
+                      id="emergencyContact"
+                    />
+                    <label htmlFor="emergencyContact" className="text-muted">
+                      <i className="bi bi-phone me-2"></i>Emergency Contact Number (10 digits)
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Travel Mode Section */}
+              <div className="section-header mb-4">
+                <h6 className="text-primary mb-3">
+                  <i className="bi bi-bus-front me-2"></i>Travel Mode
+                </h6>
+                <hr className="section-divider" />
+              </div>
+
+              <div className="row mb-4">
+                <div className="col-md-6 mb-3">
+                  <div className="form-group">
+                    <label className="form-label text-muted mb-2">
+                      <i className="bi bi-signpost-split me-2"></i>Travel Mode
+                    </label>
+                    <Form.Select
+                      name="travel_mode"
+                      value={formData.travel_mode}
+                      onChange={handleInputChange}
+                      className="form-select-lg"
+                      style={{ minHeight: '50px' }}
+                    >
+                      <option value="">Select Travel Mode</option>
+                      <option value="School Bus">School Bus</option>
+                      <option value="Own">Own</option>
+                    </Form.Select>
+                  </div>
                 </div>
 
-                {!formData.grade_id || !formData.division_id ? (
-                  <div className="alert alert-info">
-                    <i className="bi bi-info-circle me-2"></i>
-                    Please select Grade and Division to view applicable fees.
-                  </div>
-                ) : feesLoading ? (
-                  <div className="alert alert-light d-flex align-items-center">
-                    <Spinner size="sm" className="me-2" />
-                    Loading fee information...
-                  </div>
-                ) : semesterFees ? (
-                  <div className="card border-primary">
-                    <div className="card-header bg-primary bg-gradient text-white py-3">
-                      <div className="d-flex justify-content-between align-items-center">
-                        <div>
-                          <h6 className="mb-0 fw-bold">
-                            <i className="bi bi-currency-rupee me-2"></i>
-                            Fee Information
-                          </h6>
-                          <small className="opacity-75">Based on Grade & Division selection</small>
+                {/* Removed vehicle number, parent/staff name, and verified TTS ID fields */}
+              </div>
+
+              {/* Medical Information Section (Accordion) */}
+              <div className="section-header mb-4">
+                <h6 className="text-primary mb-3">
+                  <i className="bi bi-heart-pulse me-2"></i>Medical Information
+                </h6>
+                <hr className="section-divider" />
+              </div>
+
+              <Accordion className="mb-4">
+                <Accordion.Item eventKey="0">
+                  <Accordion.Header>
+                    <i className="bi bi-heart-pulse me-2"></i>
+                    Medical Information (Click to expand)
+                  </Accordion.Header>
+                  <Accordion.Body>
+                    <div className="row g-3">
+                      {/* Blood Group */}
+                      <div className="col-md-4">
+                        <div className="form-group">
+                          <label className="form-label text-muted mb-2">
+                            <i className="bi bi-droplet-fill me-2"></i>Blood Group
+                          </label>
+                          <Form.Select
+                            name="blood_group"
+                            value={formData.blood_group}
+                            onChange={handleInputChange}
+                            className="form-select-lg"
+                            style={{ minHeight: '50px' }}
+                          >
+                            <option value="">Select Blood Group</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                          </Form.Select>
+                        </div>
+                      </div>
+
+                      {/* Allergies Multi-Select */}
+                      <div className="col-md-4">
+                        <div className="form-group h-100 d-flex flex-column">
+                          <label className="form-label text-muted mb-2">
+                            <i className="bi bi-exclamation-triangle me-2"></i>Allergies
+                          </label>
+                          <div className="form-control flex-grow-1" style={{ minHeight: '48px', padding: '12px' }}>
+                            <details>
+                              <summary className="text-muted" style={{ cursor: 'pointer', listStyle: 'none' }}>
+                                <i className="bi bi-chevron-down me-2"></i>
+                                Select allergies...
+                              </summary>
+                              <div className="mt-3">
+                                {ALLERGIES_OPTIONS.map((option) => {
+                                  const isChecked = Array.isArray(formData.allergies) && formData.allergies.includes(option);
+                                  return (
+                                    <div
+                                      key={option}
+                                      className="form-check"
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => handleAllergyToggle(option)}
+                                    >
+                                      <input
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {}}
+                                      />
+                                      <label className="form-check-label">
+                                        {option}
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </details>
+                          </div>
+                          <div className="mt-2">
+                            {Array.isArray(formData.allergies) && formData.allergies.length > 0 ? (
+                              formData.allergies.map((allergy) => (
+                                <Badge key={allergy} bg="info" text="dark" className="me-2 mb-2">
+                                  {allergy}
+                                </Badge>
+                              ))
+                            ) : (
+                              <small className="text-muted">No allergies selected yet.</small>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lifestyle Diseases */}
+                      <div className="col-md-4">
+                        <div className="form-floating h-100">
+                          <Form.Control
+                            as="textarea"
+                            rows={3}
+                            name="lifestyle_diseases"
+                            value={formData.lifestyle_diseases}
+                            onChange={handleInputChange}
+                            placeholder="Lifestyle Diseases"
+                            maxLength={500}
+                            style={{ minHeight: '120px' }}
+                            id="lifestyleDiseases"
+                          />
+                          <label htmlFor="lifestyleDiseases" className="text-muted">
+                            <i className="bi bi-clipboard2-pulse me-2"></i>Lifestyle Diseases
+                          </label>
                         </div>
                       </div>
                     </div>
-                    <div className="card-body p-4">
-                      {(() => {
-                        // Calculate combined totals
-                        const s1Found = semesterFees.semester_1.status === 'found';
-                        const s2Found = semesterFees.semester_2.status === 'found';
-                        
-                        if (!s1Found && !s2Found) {
-                          return (
-                            <div className="text-center py-4">
-                              <i className="bi bi-exclamation-triangle text-warning fs-1 mb-3 d-block"></i>
-                              <h6 className="text-muted">No fee structure found</h6>
-                              <small className="text-muted">
-                                No fee records found for the selected grade and division combination.
-                              </small>
-                            </div>
-                          );
-                        }
 
-                        // Combine mandatory fees, avoiding duplicates for NULL semester fees
-                        const seenFeeIds = new Set();
-                        const allMandatoryFees = [];
-                        
-                        // Add Semester 1 fees
-                        (semesterFees.semester_1.mandatory_fees || []).forEach(fee => {
-                          if (!seenFeeIds.has(fee.id)) {
-                            allMandatoryFees.push({...fee});
-                            seenFeeIds.add(fee.id);
-                          }
-                        });
-                        
-                        // Add Semester 2 fees (only if not already added)
-                        (semesterFees.semester_2.mandatory_fees || []).forEach(fee => {
-                          if (!seenFeeIds.has(fee.id)) {
-                            allMandatoryFees.push({...fee});
-                            seenFeeIds.add(fee.id);
-                          }
-                        });
-                        
-                        // Combine optional fees, avoiding duplicates
-                        const seenOptionalIds = new Set();
-                        const allOptionalFees = [];
-                        
-                        // Add Semester 1 optional fees
-                        (semesterFees.semester_1.optional_fees || []).forEach(fee => {
-                          if (!seenOptionalIds.has(fee.id)) {
-                            allOptionalFees.push({...fee});
-                            seenOptionalIds.add(fee.id);
-                          }
-                        });
-                        
-                        // Add Semester 2 optional fees (only if not already added)
-                        (semesterFees.semester_2.optional_fees || []).forEach(fee => {
-                          if (!seenOptionalIds.has(fee.id)) {
-                            allOptionalFees.push({...fee});
-                            seenOptionalIds.add(fee.id);
-                          }
-                        });
+                    <div className="row g-3 mt-1">
+                      {/* Diabetic Toggle */}
+                      <div className="col-md-4 mb-3">
+                        <Form.Check
+                          type="switch"
+                          id="diabetic-switch"
+                          label="Diabetic"
+                          checked={formData.diabetic}
+                          onChange={(e) => setFormData(prev => ({ ...prev, diabetic: e.target.checked }))}
+                        />
+                      </div>
 
-                        // Calculate corrected totals (both-semester fees appear in both lists but should only be counted once)
-                        const bothSemesterMandatory = allMandatoryFees.filter(fee => fee.semester === null);
-                        const bothSemesterOptional = allOptionalFees.filter(fee => fee.semester === null);
-                        
-                        const bothSemesterMandatoryTotal = bothSemesterMandatory.reduce((sum, fee) => sum + parseFloat(fee.amount), 0);
-                        const bothSemesterOptionalTotal = bothSemesterOptional.reduce((sum, fee) => sum + parseFloat(fee.amount), 0);
-                        
-                        // Calculate actual totals (subtract one instance of both-semester fees to avoid double counting)
-                        const totalMandatory = (semesterFees.semester_1.mandatory_total || 0) + (semesterFees.semester_2.mandatory_total || 0) - bothSemesterMandatoryTotal;
-                        const totalOptional = (semesterFees.semester_1.optional_total || 0) + (semesterFees.semester_2.optional_total || 0) - bothSemesterOptionalTotal;
+                      {/* Asthmatic Toggle */}
+                      <div className="col-md-4 mb-3">
+                        <Form.Check
+                          type="switch"
+                          id="asthmatic-switch"
+                          label="Asthmatic"
+                          checked={formData.asthmatic}
+                          onChange={(e) => setFormData(prev => ({ ...prev, asthmatic: e.target.checked }))}
+                        />
+                      </div>
 
-                        return (
-                          <>
-                            {/* Mandatory Fees Section - Individual Cards */}
-                            {allMandatoryFees.length > 0 && (
-                              <div className="mb-4">
-                                <div className="d-flex justify-content-between align-items-center mb-3">
-                                  <span className="fw-bold text-danger fs-5">
-                                    <i className="bi bi-asterisk text-danger me-2" style={{fontSize: '12px'}}></i>
-                                    Mandatory Fees
-                                  </span>
-                                  <Badge bg="danger" className="py-2 px-3">
-                                    {allMandatoryFees.length} fees
-                                  </Badge>
-                                </div>
-                                <div className="row">
-                                  {allMandatoryFees.map((fee, index) => (
-                                    <div key={`mandatory-${index}`} className="col-md-6 mb-3">
-                                      <div className="card border-danger shadow-sm">
-                                        <div className="card-body p-3">
-                                          <div className="d-flex justify-content-between align-items-start">
-                                            <div className="flex-grow-1">
-                                              <h6 className="card-title text-danger mb-1 fw-bold">
-                                                {fee.category_name}
-                                              </h6>
-                                              {fee.description && (
-                                                <p className="card-text text-muted small mb-2">
-                                                  {fee.description}
-                                                </p>
-                                              )}
-                                              {fee.due_date && (
-                                                <small className="text-muted">
-                                                  <i className="bi bi-calendar me-1"></i>
-                                                  Due: {new Date(fee.due_date).toLocaleDateString()}
-                                                </small>
-                                              )}
-                                            </div>
-                                            <div className="text-end">
-                                              <span className="fw-bold text-danger fs-5">
-                                                ₹{parseFloat(fee.amount).toLocaleString()}
-                                              </span>
-                                              <br />
-                                              <Badge bg="danger" pill className="mt-1">
-                                                Required
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="alert alert-danger alert-dismissible">
-                                  <i className="bi bi-info-circle me-2"></i>
-                                  <strong>Total Mandatory: ₹{totalMandatory.toLocaleString()}</strong>
-                                  <small className="d-block mt-1">These fees will be automatically assigned to the student.</small>
-                                </div>
-                              </div>
-                            )}
+                      {/* Phobia Toggle */}
+                      <div className="col-md-4 mb-3">
+                        <Form.Check
+                          type="switch"
+                          id="phobia-switch"
+                          label="Has Phobia"
+                          checked={formData.phobia}
+                          onChange={(e) => setFormData(prev => ({ ...prev, phobia: e.target.checked }))}
+                        />
+                      </div>
+                    </div>
+                  </Accordion.Body>
+                </Accordion.Item>
+              </Accordion>
 
-                            {/* Optional Fees Section - Individual Cards */}
-                            {allOptionalFees.length > 0 && (
-                              <div className="mb-4">
-                                <div className="d-flex justify-content-between align-items-center mb-3">
-                                  <span className="fw-bold text-secondary fs-6">
-                                    <i className="bi bi-plus-circle me-2"></i>
-                                    Optional Fees
-                                  </span>
-                                  <Badge bg="secondary" className="py-1 px-2">
-                                    {allOptionalFees.length} fees
-                                  </Badge>
-                                </div>
-                                <div className="row">
-                                  {allOptionalFees.slice(0, 3).map((fee, index) => (
-                                    <div key={`optional-${index}`} className="col-md-4 mb-2">
-                                      <div className="card border-secondary" style={{opacity: 0.7}}>
-                                        <div className="card-body p-2">
-                                          <div className="d-flex justify-content-between align-items-center">
-                                            <div>
-                                              <small className="text-muted fw-bold">{fee.category_name}</small>
-                                              <br />
-                                              <Badge bg="secondary" pill size="sm">Optional</Badge>
-                                            </div>
-                                            <small className="text-muted">₹{parseFloat(fee.amount).toLocaleString()}</small>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                  {allOptionalFees.length > 3 && (
-                                    <div className="col-12">
-                                      <small className="text-muted">
-                                        <i className="bi bi-three-dots me-1"></i>
-                                        +{allOptionalFees.length - 3} more optional fees (₹{(totalOptional - allOptionalFees.slice(0, 3).reduce((sum, fee) => sum + parseFloat(fee.amount), 0)).toLocaleString()})
-                                      </small>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="alert alert-info">
-                                  <i className="bi bi-info-circle me-2"></i>
-                                  <small>Optional fees (₹{totalOptional.toLocaleString()}) can be added later if needed.</small>
-                                </div>
-                              </div>
-                            )}
+              {/* Family Doctor Information Section */}
+              <div className="section-header mb-4">
+                <h6 className="text-primary mb-3">
+                  <i className="bi bi-hospital me-2"></i>Family Doctor Information
+                </h6>
+                <hr className="section-divider" />
+              </div>
 
-                            {/* No Fees Message */}
-                            {allMandatoryFees.length === 0 && allOptionalFees.length === 0 && (
-                              <div className="alert alert-warning">
-                                <i className="bi bi-exclamation-triangle me-2"></i>
-                                No fee structures found for this grade and division combination.
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
+              <div className="row mb-4">
+                <div className="col-md-4 mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="doctor_name"
+                      value={formData.doctor_name}
+                      onChange={handleInputChange}
+                      placeholder="Doctor Name"
+                      maxLength={100}
+                      className="form-control-lg"
+                      id="doctorName"
+                    />
+                    <label htmlFor="doctorName" className="text-muted">
+                      <i className="bi bi-person-vcard me-2"></i>Doctor Name
+                    </label>
+                  </div>
+                </div>
+                <div className="col-md-4 mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="doctor_contact"
+                      value={formData.doctor_contact}
+                      onChange={handleInputChange}
+                      placeholder="Doctor Contact"
+                      maxLength={15}
+                      className="form-control-lg"
+                      id="doctorContact"
+                    />
+                    <label htmlFor="doctorContact" className="text-muted">
+                      <i className="bi bi-telephone me-2"></i>Doctor Contact
+                    </label>
+                  </div>
+                </div>
+                <div className="col-md-4 mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      as="textarea"
+                      rows={2}
+                      name="clinic_address"
+                      value={formData.clinic_address}
+                      onChange={handleInputChange}
+                      placeholder="Clinic Address"
+                      maxLength={500}
+                      style={{ minHeight: '80px' }}
+                      id="clinicAddress"
+                    />
+                    <label htmlFor="clinicAddress" className="text-muted">
+                      <i className="bi bi-geo-alt me-2"></i>Clinic Address
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Documents & Photos Upload Section */}
+              <div className="section-header mb-4">
+                <h6 className="text-primary mb-3">
+                  <i className="bi bi-file-earmark-arrow-up me-2"></i>Documents & Photos Upload
+                </h6>
+                <hr className="section-divider" />
+              </div>
+
+              <div className="row mb-4">
+                {/* Student Photo */}
+                <div className="col-md-4 mb-3">
+                  <label className="form-label text-muted">
+                    <i className="bi bi-person-badge me-2"></i>Student Photograph
+                  </label>
+                  <Form.Control
+                    type="file"
+                    accept=".jpg,.jpeg,.png"
+                    onChange={(e) => handleFileUpload(e, 'student_photo')}
+                    disabled={uploadingDocument}
+                  />
+                  <small className="text-muted d-block">Max 2MB, JPG/PNG only</small>
+                  {(previewUrls.student_photo || formData.student_photo_url) && (
+                    <div className="mt-2 position-relative">
+                      <img 
+                        src={previewUrls.student_photo || getImageUrl(formData.student_photo_url)} 
+                        alt="Student" 
+                        className="img-thumbnail"
+                        style={{ maxHeight: '120px', width: 'auto' }}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'block';
+                        }}
+                      />
+                      <div style={{ display: 'none' }}>
+                        <Badge bg="secondary">
+                          <i className="bi bi-image me-1"></i>Image Error
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="mt-2 w-100"
+                        onClick={() => {
+                          currentFileUrls.current.student_photo_url = '';
+                          setUploadedFiles(prev => ({ ...prev, student_photo_url: '' }));
+                          setFormData(prev => ({ ...prev, student_photo_url: '' }));
+                          setPreviewUrls(prev => ({ ...prev, student_photo: null }));
+                        }}
+                      >
+                        <i className="bi bi-trash me-1"></i>Remove
+                      </Button>
+                    </div>
+                  )}
+                  {uploadingDocument && (
+                    <div className="mt-2">
+                      <Spinner size="sm" className="me-2" />
+                      <small>Uploading...</small>
+                    </div>
+                  )}
+                </div>
+
+                {/* ID Proof */}
+                <div className="col-md-4 mb-3">
+                  <label className="form-label text-muted">
+                    <i className="bi bi-card-checklist me-2"></i>ID Proof
+                  </label>
+                  <Form.Control
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => handleFileUpload(e, 'id_proof')}
+                    disabled={uploadingDocument}
+                  />
+                  <small className="text-muted d-block">Max 2MB, JPG/PNG/PDF</small>
+                  {(previewUrls.id_proof || formData.id_proof_url) && (
+                    <div className="mt-2">
+                      {(previewUrls.id_proof || formData.id_proof_url)?.endsWith('.pdf') ? (
+                        <div>
+                          <Badge bg="success" className="mb-2">
+                            <i className="bi bi-file-pdf me-1"></i>PDF Document
+                          </Badge>
+                          <br />
+                          <a 
+                            href={previewUrls.id_proof || getImageUrl(formData.id_proof_url)} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-eye me-1"></i>View PDF
+                          </a>
+                        </div>
+                      ) : (
+                        <img 
+                          src={previewUrls.id_proof || getImageUrl(formData.id_proof_url)} 
+                          alt="ID Proof" 
+                          className="img-thumbnail" 
+                          style={{ maxHeight: '120px', width: 'auto' }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="mt-2 w-100"
+                        onClick={() => {
+                          currentFileUrls.current.id_proof_url = '';
+                          setUploadedFiles(prev => ({ ...prev, id_proof_url: '' }));
+                          setFormData(prev => ({ ...prev, id_proof_url: '' }));
+                          setPreviewUrls(prev => ({ ...prev, id_proof: null }));
+                        }}
+                      >
+                        <i className="bi bi-trash me-1"></i>Remove
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Address Proof */}
+                <div className="col-md-4 mb-3">
+                  <label className="form-label text-muted">
+                    <i className="bi bi-house-check me-2"></i>Address Proof
+                  </label>
+                  <Form.Control
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => handleFileUpload(e, 'address_proof')}
+                    disabled={uploadingDocument}
+                  />
+                  <small className="text-muted d-block">Max 2MB, JPG/PNG/PDF</small>
+                  {(previewUrls.address_proof || formData.address_proof_url) && (
+                    <div className="mt-2">
+                      {(previewUrls.address_proof || formData.address_proof_url)?.endsWith('.pdf') ? (
+                        <div>
+                          <Badge bg="success" className="mb-2">
+                            <i className="bi bi-file-pdf me-1"></i>PDF Document
+                          </Badge>
+                          <br />
+                          <a 
+                            href={previewUrls.address_proof || getImageUrl(formData.address_proof_url)} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-eye me-1"></i>View PDF
+                          </a>
+                        </div>
+                      ) : (
+                        <img 
+                          src={previewUrls.address_proof || getImageUrl(formData.address_proof_url)} 
+                          alt="Address Proof" 
+                          className="img-thumbnail" 
+                          style={{ maxHeight: '120px', width: 'auto' }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="mt-2 w-100"
+                        onClick={() => {
+                          currentFileUrls.current.address_proof_url = '';
+                          setUploadedFiles(prev => ({ ...prev, address_proof_url: '' }));
+                          setFormData(prev => ({ ...prev, address_proof_url: '' }));
+                          setPreviewUrls(prev => ({ ...prev, address_proof: null }));
+                        }}
+                      >
+                        <i className="bi bi-trash me-1"></i>Remove
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Student Aspirations Section */}
+              {(user?.role === 'teacher' || user?.user_type === 'admin' || user?.role === 'admin') && (
+                <>
+                  <div className="section-header mb-4">
+                    <h6 className="text-primary mb-3">
+                      <i className="bi bi-lightbulb me-2"></i>Student Aspirations
+                    </h6>
+                    <hr className="section-divider" />
+                  </div>
+
+                  <div className="row mb-4">
+                    <div className="col-md-12 mb-3">
+                      <div className="form-floating">
+                        <Form.Control
+                          as="textarea"
+                          rows={3}
+                          name="student_aspirations"
+                          value={formData.student_aspirations}
+                          onChange={handleInputChange}
+                          placeholder="Student Aspirations"
+                          maxLength={2000}
+                          style={{ minHeight: '120px' }}
+                          id="studentAspirations"
+                        />
+                        <label htmlFor="studentAspirations" className="text-muted">
+                          <i className="bi bi-star me-2"></i>Student Aspirations
+                        </label>
+                      </div>
+                      <small className="text-muted">
+                        <i className="bi bi-info-circle me-1"></i>
+                        Share the student's aspirations, goals, and career interests
+                      </small>
                     </div>
                   </div>
-                ) : (
-                  <div className="alert alert-warning">
-                    <i className="bi bi-exclamation-triangle me-2"></i>
-                    Unable to load fee information. Please try again.
-                  </div>
-                )}
+                </>
+              )}
 
-                {semesterFees && (semesterFees.semester_1.status === 'found' || semesterFees.semester_2.status === 'found') && (
-                  <div className="alert alert-info mt-3 mb-0">
-                    <small>
-                      <i className="bi bi-lightbulb me-2"></i>
-                      <strong>Only mandatory fees (marked with <i className="bi bi-asterisk text-danger" style={{fontSize: '8px'}}></i>) will be automatically assigned.</strong> Optional fees can be added later if needed.
-                    </small>
+              {/* Semester Assignment - Compact */}
+              {formData.grade_id && semesterFees && semesterFees.status === 'found' && (
+                <div className="mb-4">
+                  <h6 className="text-primary mb-3">
+                    <i className="bi bi-calendar-range me-2"></i>Semester Assignment
+                  </h6>
+                  <div className="row">
+                    {/* Semester 1 Card */}
+                    <div className="col-md-6 mb-3">
+                      <div className="card border-primary shadow-sm">
+                        <div className="card-header bg-primary text-white py-2">
+                          <small className="fw-bold">
+                            <i className="bi bi-1-circle me-1"></i>Semester 1
+                          </small>
+                        </div>
+                        <div className="card-body py-3 px-3 text-center">
+                          <div className="h5 text-primary mb-2">
+                            ₹{parseFloat(semesterFees.semester_1.amount || 0).toLocaleString()}
+                          </div>
+                          <Badge bg="primary" pill>
+                            Required
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Semester 2 Card */}
+                    <div className="col-md-6 mb-3">
+                      <div className="card border-success shadow-sm">
+                        <div className="card-header bg-success text-white py-2">
+                          <small className="fw-bold">
+                            <i className="bi bi-2-circle me-1"></i>Semester 2
+                          </small>
+                        </div>
+                        <div className="card-body py-3 px-3 text-center">
+                          <div className="h5 text-success mb-2">
+                            ₹{parseFloat(semesterFees.semester_2.amount || 0).toLocaleString()}
+                          </div>
+                          <Badge bg="success" pill>
+                            Required
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
+                  
+                  {/* Total Summary - Compact */}
+                  <div className="alert alert-info py-2 mb-0">
+                    <i className="bi bi-info-circle me-2"></i>
+                    <strong>Total Fee: ₹{(semesterFees.total_amount || 0).toLocaleString()}</strong>
+                    <br />
+                    <small>Based on selected semester, these fees will be automatically assigned to the student.</small>
+                  </div>
+                </div>
+              )}
             </Modal.Body>
             <Modal.Footer className="bg-light border-0 p-4">
               <Button 
@@ -1354,13 +2825,18 @@ const StudentManagement = () => {
               <Button 
                 type="submit" 
                 variant="primary"
-                disabled={createMutation.isLoading || updateMutation.isLoading}
+                disabled={createMutation.isLoading || updateMutation.isLoading || uploadingDocument}
                 className="px-4 py-2 shadow-sm"
               >
                 {createMutation.isLoading || updateMutation.isLoading ? (
                   <>
                     <Spinner size="sm" className="me-2" />
                     <span>{editingStudent ? 'Updating...' : 'Creating...'}</span>
+                  </>
+                ) : uploadingDocument ? (
+                  <>
+                    <Spinner size="sm" className="me-2" />
+                    <span>Uploading file...</span>
                   </>
                 ) : (
                   <>
@@ -1504,21 +2980,16 @@ const StudentManagement = () => {
       </Modal>
 
       {/* Add Parent Modal */}
-      <Modal show={showParentModal} onHide={handleCloseParentModal} size="lg" centered>
+      <Modal show={showParentModal} onHide={handleCloseParentModal} size="lg" centered scrollable>
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-primary text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-person-plus fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">Add New Parent</h5>
-                <small className="opacity-75">Create a new parent account</small>
-              </div>
+          <Modal.Header className="bg-gradient-primary text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center">
+              <i className="bi bi-person-plus me-2"></i>
+              <span>Add New Parent</span>
             </Modal.Title>
           </Modal.Header>
           <Form onSubmit={handleParentSubmit}>
-            <Modal.Body className="p-4">
+            <Modal.Body className="p-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <Row>
                 <Col md={6} className="mb-3">
                   <div className="form-floating">
@@ -1645,6 +3116,354 @@ const StudentManagement = () => {
                   </div>
                 </Col>
               </Row>
+
+              {/* Professional Information */}
+              <div className="col-12 mb-3">
+                <hr />
+                <h6 className="text-muted mb-3">
+                  <i className="bi bi-briefcase me-2"></i>Professional Information
+                </h6>
+              </div>
+
+              <Row>
+                <Col md={4} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="occupation"
+                      value={parentFormData.occupation}
+                      onChange={handleParentInputChange}
+                      placeholder="Occupation"
+                      maxLength={150}
+                      id="parentOccupation"
+                    />
+                    <label htmlFor="parentOccupation" className="text-muted">
+                      <i className="bi bi-person-workspace me-2"></i>Occupation
+                    </label>
+                  </div>
+                </Col>
+
+                <Col md={4} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="current_employment"
+                      value={parentFormData.current_employment}
+                      onChange={handleParentInputChange}
+                      placeholder="Current Employment"
+                      maxLength={150}
+                      id="parentCurrentEmployment"
+                    />
+                    <label htmlFor="parentCurrentEmployment" className="text-muted">
+                      <i className="bi bi-building me-2"></i>Current Employment
+                    </label>
+                  </div>
+                </Col>
+
+                <Col md={4} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      type="text"
+                      name="company_name"
+                      value={parentFormData.company_name}
+                      onChange={handleParentInputChange}
+                      placeholder="Company Name"
+                      maxLength={150}
+                      id="parentCompanyName"
+                    />
+                    <label htmlFor="parentCompanyName" className="text-muted">
+                      <i className="bi bi-building-fill me-2"></i>Company Name
+                    </label>
+                  </div>
+                </Col>
+              </Row>
+
+              {/* Contact Preferences */}
+              <div className="col-12 mb-3">
+                <hr />
+                <h6 className="text-muted mb-3">
+                  <i className="bi bi-telephone me-2"></i>Contact Preferences
+                </h6>
+              </div>
+
+              <Row>
+                <Col md={6} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Select
+                      name="best_contact_day"
+                      value={parentFormData.best_contact_day}
+                      onChange={handleParentInputChange}
+                      id="parentBestContactDay"
+                    >
+                      <option value="">Select Day</option>
+                      <option value="Monday">Monday</option>
+                      <option value="Tuesday">Tuesday</option>
+                      <option value="Wednesday">Wednesday</option>
+                      <option value="Thursday">Thursday</option>
+                      <option value="Friday">Friday</option>
+                      <option value="Saturday">Saturday</option>
+                      <option value="Sunday">Sunday</option>
+                      <option value="Weekdays">Weekdays</option>
+                      <option value="Weekends">Weekends</option>
+                      <option value="Anytime">Anytime</option>
+                    </Form.Select>
+                    <label htmlFor="parentBestContactDay" className="text-muted">
+                      <i className="bi bi-calendar-day me-2"></i>Best Contact Day
+                    </label>
+                  </div>
+                </Col>
+
+                <Col md={6} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Select
+                      name="best_contact_time"
+                      value={parentFormData.best_contact_time}
+                      onChange={handleParentInputChange}
+                      id="parentBestContactTime"
+                    >
+                      <option value="">Select Time</option>
+                      <option value="Morning (8 AM - 12 PM)">Morning (8 AM - 12 PM)</option>
+                      <option value="Afternoon (12 PM - 4 PM)">Afternoon (12 PM - 4 PM)</option>
+                      <option value="Evening (4 PM - 8 PM)">Evening (4 PM - 8 PM)</option>
+                      <option value="Anytime">Anytime</option>
+                    </Form.Select>
+                    <label htmlFor="parentBestContactTime" className="text-muted">
+                      <i className="bi bi-clock me-2"></i>Best Contact Time
+                    </label>
+                  </div>
+                </Col>
+              </Row>
+
+              {/* Child Information */}
+              <div className="col-12 mb-3">
+                <hr />
+                <h6 className="text-muted mb-3">
+                  <i className="bi bi-heart me-2"></i>Know Your Child
+                </h6>
+              </div>
+
+              <Row>
+                <Col md={12} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      as="textarea"
+                      name="kid_likes"
+                      value={parentFormData.kid_likes}
+                      onChange={handleParentInputChange}
+                      placeholder="Child's likes"
+                      style={{ minHeight: '80px' }}
+                      id="parentKidLikes"
+                    />
+                    <label htmlFor="parentKidLikes" className="text-muted">
+                      <i className="bi bi-emoji-smile me-2"></i>Child's Likes
+                    </label>
+                  </div>
+                </Col>
+
+                <Col md={12} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      as="textarea"
+                      name="kid_dislikes"
+                      value={parentFormData.kid_dislikes}
+                      onChange={handleParentInputChange}
+                      placeholder="Child's dislikes"
+                      style={{ minHeight: '80px' }}
+                      id="parentKidDislikes"
+                    />
+                    <label htmlFor="parentKidDislikes" className="text-muted">
+                      <i className="bi bi-emoji-frown me-2"></i>Child's Dislikes
+                    </label>
+                  </div>
+                </Col>
+
+                <Col md={12} className="mb-3">
+                  <div className="form-floating">
+                    <Form.Control
+                      as="textarea"
+                      name="kid_aspirations"
+                      value={parentFormData.kid_aspirations}
+                      onChange={handleParentInputChange}
+                      placeholder="Child's aspirations"
+                      style={{ minHeight: '80px' }}
+                      id="parentKidAspirations"
+                    />
+                    <label htmlFor="parentKidAspirations" className="text-muted">
+                      <i className="bi bi-star me-2"></i>Child's Aspirations
+                    </label>
+                  </div>
+                </Col>
+              </Row>
+
+              {/* Documents Upload */}
+              <div className="col-12 mb-3">
+                <hr />
+                <h6 className="text-muted mb-3">
+                  <i className="bi bi-file-earmark-arrow-up me-2"></i>Upload Documents
+                </h6>
+              </div>
+
+              <Row>
+                {/* Parent Photo */}
+                <Col md={4} className="mb-3">
+                  <label className="form-label text-muted">
+                    <i className="bi bi-person-badge me-2"></i>Parent Photograph
+                  </label>
+                  <Form.Control
+                    type="file"
+                    accept=".jpg,.jpeg,.png"
+                    onChange={(e) => handleParentFileUpload(e, 'parent_photo')}
+                    disabled={parentUploadingDocument}
+                  />
+                  <small className="text-muted d-block">Max 2MB, JPG/PNG only</small>
+                  {(parentPreviewUrls.parent_photo || parentFormData.parent_photo) && (
+                    <div className="mt-2 position-relative">
+                      <img
+                        src={parentPreviewUrls.parent_photo || getImageUrl(parentFormData.parent_photo)}
+                        alt="Parent"
+                        className="img-thumbnail"
+                        style={{ maxHeight: '120px', width: 'auto' }}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="mt-2 w-100"
+                        onClick={() => {
+                          parentFileUrls.current.parent_photo = '';
+                          setParentUploadedFiles(prev => ({ ...prev, parent_photo: '' }));
+                          setParentFormData(prev => ({ ...prev, parent_photo: '' }));
+                          setParentPreviewUrls(prev => ({ ...prev, parent_photo: null }));
+                        }}
+                      >
+                        <i className="bi bi-trash me-1"></i>Remove
+                      </Button>
+                    </div>
+                  )}
+                  {parentUploadingDocument && (
+                    <div className="mt-2">
+                      <Spinner size="sm" className="me-2" />
+                      <small>Uploading...</small>
+                    </div>
+                  )}
+                </Col>
+
+                {/* ID Proof */}
+                <Col md={4} className="mb-3">
+                  <label className="form-label text-muted">
+                    <i className="bi bi-card-checklist me-2"></i>ID Proof
+                  </label>
+                  <Form.Control
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => handleParentFileUpload(e, 'id_proof')}
+                    disabled={parentUploadingDocument}
+                  />
+                  <small className="text-muted d-block">Max 2MB, JPG/PNG/PDF</small>
+                  {(parentPreviewUrls.id_proof || parentFormData.id_proof) && (
+                    <div className="mt-2">
+                      {(parentPreviewUrls.id_proof || parentFormData.id_proof)?.endsWith('.pdf') ? (
+                        <div>
+                          <Badge bg="success" className="mb-2">
+                            <i className="bi bi-file-pdf me-1"></i>PDF Document
+                          </Badge>
+                          <br />
+                          <a
+                            href={parentPreviewUrls.id_proof || getImageUrl(parentFormData.id_proof)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-eye me-1"></i>View PDF
+                          </a>
+                        </div>
+                      ) : (
+                        <img
+                          src={parentPreviewUrls.id_proof || getImageUrl(parentFormData.id_proof)}
+                          alt="ID Proof"
+                          className="img-thumbnail"
+                          style={{ maxHeight: '120px', width: 'auto' }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="mt-2 w-100"
+                        onClick={() => {
+                          parentFileUrls.current.id_proof = '';
+                          setParentUploadedFiles(prev => ({ ...prev, id_proof: '' }));
+                          setParentFormData(prev => ({ ...prev, id_proof: '' }));
+                          setParentPreviewUrls(prev => ({ ...prev, id_proof: null }));
+                        }}
+                      >
+                        <i className="bi bi-trash me-1"></i>Remove
+                      </Button>
+                    </div>
+                  )}
+                </Col>
+
+                {/* Address Proof */}
+                <Col md={4} className="mb-3">
+                  <label className="form-label text-muted">
+                    <i className="bi bi-house-check me-2"></i>Address Proof
+                  </label>
+                  <Form.Control
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => handleParentFileUpload(e, 'address_proof')}
+                    disabled={parentUploadingDocument}
+                  />
+                  <small className="text-muted d-block">Max 2MB, JPG/PNG/PDF</small>
+                  {(parentPreviewUrls.address_proof || parentFormData.address_proof) && (
+                    <div className="mt-2">
+                      {(parentPreviewUrls.address_proof || parentFormData.address_proof)?.endsWith('.pdf') ? (
+                        <div>
+                          <Badge bg="success" className="mb-2">
+                            <i className="bi bi-file-pdf me-1"></i>PDF Document
+                          </Badge>
+                          <br />
+                          <a
+                            href={parentPreviewUrls.address_proof || getImageUrl(parentFormData.address_proof)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-eye me-1"></i>View PDF
+                          </a>
+                        </div>
+                      ) : (
+                        <img
+                          src={parentPreviewUrls.address_proof || getImageUrl(parentFormData.address_proof)}
+                          alt="Address Proof"
+                          className="img-thumbnail"
+                          style={{ maxHeight: '120px', width: 'auto' }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="mt-2 w-100"
+                        onClick={() => {
+                          parentFileUrls.current.address_proof = '';
+                          setParentUploadedFiles(prev => ({ ...prev, address_proof: '' }));
+                          setParentFormData(prev => ({ ...prev, address_proof: '' }));
+                          setParentPreviewUrls(prev => ({ ...prev, address_proof: null }));
+                        }}
+                      >
+                        <i className="bi bi-trash me-1"></i>Remove
+                      </Button>
+                    </div>
+                  )}
+                </Col>
+              </Row>
             </Modal.Body>
             <Modal.Footer className="bg-light border-0 p-4">
               <Button 
@@ -1686,19 +3505,23 @@ const StudentManagement = () => {
       {/* Payment History Modal */}
       <Modal show={showPaymentHistoryModal} onHide={handleClosePaymentHistory} size="xl" centered>
         <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-success text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-receipt fs-3"></i>
+          <Modal.Header className="bg-gradient-success text-white border-0 py-3" closeButton>
+            <Modal.Title className="d-flex align-items-center justify-content-between">
+              <div className="d-flex align-items-center">
+                <i className="bi bi-receipt me-2"></i>
+                <span>Payment History{selectedStudentForHistory && ` - ${selectedStudentForHistory.student_name}`}</span>
               </div>
-              <div>
-                <h5 className="mb-0">Payment History</h5>
-                {selectedStudentForHistory && (
-                  <small className="opacity-75">
-                    {selectedStudentForHistory.student_name} - Roll: {selectedStudentForHistory.roll_number}
-                  </small>
-                )}
-              </div>
+              {paymentHistoryData && paymentHistoryData.length > 0 && (
+                <Button 
+                  variant="outline-light" 
+                  size="sm"
+                  onClick={() => downloadPaymentHistoryPDF(selectedStudentForHistory, paymentHistoryData)}
+                  className="d-flex align-items-center"
+                >
+                  <i className="bi bi-download me-2"></i>
+                  Download PDF
+                </Button>
+              )}
             </Modal.Title>
           </Modal.Header>
           <Modal.Body className="p-4">
@@ -1734,7 +3557,7 @@ const StudentManagement = () => {
                             <td>
                               <small>{new Date(payment.collection_date).toLocaleDateString()}</small>
                             </td>
-                            <td>{payment.category_name}</td>
+                            <td>{payment.primary_category || payment.fee_type_name || 'N/A'}</td>
                             <td>
                               <span className="fw-bold text-success">
                                 ₹{parseFloat(payment.amount).toLocaleString()}
@@ -1755,8 +3578,8 @@ const StudentManagement = () => {
                               <small>{payment.collected_by_name || 'N/A'}</small>
                             </td>
                             <td>
-                              <Badge bg={payment.is_verified ? 'success' : 'warning'}>
-                                {payment.is_verified ? 'Verified' : 'Pending'}
+                              <Badge bg="success">
+                                Paid
                               </Badge>
                             </td>
                           </tr>
@@ -1768,7 +3591,7 @@ const StudentManagement = () => {
                     <div className="mt-4 p-3 bg-light rounded">
                       <h6 className="text-muted mb-3">Payment Summary</h6>
                       <Row>
-                        <Col md={3}>
+                        <Col md={4}>
                           <div className="text-center">
                             <div className="h4 text-success mb-0">
                               ₹{paymentHistoryData.reduce((sum, payment) => sum + parseFloat(payment.amount), 0).toLocaleString()}
@@ -1776,26 +3599,18 @@ const StudentManagement = () => {
                             <small className="text-muted">Total Paid</small>
                           </div>
                         </Col>
-                        <Col md={3}>
+                        <Col md={4}>
                           <div className="text-center">
                             <div className="h4 text-primary mb-0">{paymentHistoryData.length}</div>
                             <small className="text-muted">Transactions</small>
                           </div>
                         </Col>
-                        <Col md={3}>
+                        <Col md={4}>
                           <div className="text-center">
                             <div className="h4 text-success mb-0">
-                              {paymentHistoryData.filter(p => p.is_verified).length}
+                              {paymentHistoryData.length}
                             </div>
-                            <small className="text-muted">Verified</small>
-                          </div>
-                        </Col>
-                        <Col md={3}>
-                          <div className="text-center">
-                            <div className="h4 text-warning mb-0">
-                              {paymentHistoryData.filter(p => !p.is_verified).length}
-                            </div>
-                            <small className="text-muted">Pending</small>
+                            <small className="text-muted">Completed</small>
                           </div>
                         </Col>
                       </Row>
@@ -1822,12 +3637,7 @@ const StudentManagement = () => {
                 variant="primary" 
                 onClick={() => {
                   handleClosePaymentHistory();
-                  navigate('/admin/fee-collection', { 
-                    state: { 
-                      preSelectedStudent: selectedStudentForHistory,
-                      openCollectModal: true 
-                    } 
-                  });
+                  handleShowFeeCollection(selectedStudentForHistory);
                 }}
               >
                 <i className="bi bi-plus-circle me-2"></i>
@@ -1843,6 +3653,13 @@ const StudentManagement = () => {
           }
         `}</style>
       </Modal>
+
+      {/* Fee Collection Modal */}
+      <FeeCollectionModal
+        show={showFeeCollectionModal}
+        onHide={handleCloseFeeCollection}
+        preSelectedStudent={selectedStudentForFeeCollection}
+      />
     </div>
   );
 };

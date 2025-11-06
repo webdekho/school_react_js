@@ -8,8 +8,8 @@ import { useAuth } from '../contexts/AuthContext';
 export const usePermissions = (resource) => {
   const { user, hasPermission } = useAuth();
 
-  // Admin always has all permissions
-  const isAdmin = user?.user_type === 'admin';
+  // Admin and staff always have all permissions
+  const isAdmin = user?.user_type === 'admin' || user?.user_type === 'staff';
 
   return {
     // Check if user can view the resource

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Nav, Button } from 'react-bootstrap';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,124 +7,240 @@ import SidebarGlobalSearch from './SidebarGlobalSearch';
 const AdminSidebar = ({ show, collapsed, onToggleCollapse, onClose }) => {
   const location = useLocation();
   const { hasPermission, user } = useAuth();
+  const [expandedSections, setExpandedSections] = useState({});
 
-  // Define all menu items with their required permissions
-  const allMenuItems = [
+  // Define menu structure with sections and submenus
+  const menuStructure = [
     {
+      type: 'item',
       path: '/admin',
-      icon: 'bi-speedometer2',
       label: 'Dashboard',
+      icon: 'bi-speedometer2',
       permission: 'dashboard'
     },
     {
-      path: '/admin/academic-years',
-      icon: 'bi-calendar-range',
-      label: 'Academic Years',
-      permission: 'academic_years'
+      type: 'section',
+      label: 'Academics',
+      icon: 'bi-book',
+      permission: 'academic_years',
+      submenu: [
+        {
+          path: '/admin/academic-years',
+          icon: 'bi-calendar-range',
+          label: 'Years',
+          permission: 'academic_years'
+        },
+        {
+          path: '/admin/grades',
+          icon: 'bi-bookmark',
+          label: 'Grades',
+          permission: 'grades'
+        },
+        {
+          path: '/admin/divisions',
+          icon: 'bi-grid',
+          label: 'Divisions',
+          permission: 'divisions'
+        },
+        {
+          path: '/admin/students',
+          icon: 'bi-people',
+          label: 'Students',
+          permission: 'students'
+        },
+        {
+          path: '/admin/parents',
+          icon: 'bi-person-hearts',
+          label: 'Parents',
+          permission: 'parents'
+        },
+        {
+          path: '/admin/staff',
+          icon: 'bi-person-badge',
+          label: 'Staff',
+          permission: 'staff'
+        }
+      ]
     },
     {
-      path: '/admin/grades',
-      icon: 'bi-bookmark',
-      label: 'Grades',
-      permission: 'grades'
-    },
-    {
-      path: '/admin/divisions',
-      icon: 'bi-grid',
-      label: 'Divisions',
-      permission: 'divisions'
-    },
-    {
-      path: '/admin/students',
-      icon: 'bi-people',
-      label: 'Students',
-      permission: 'students'
-    },
-    {
-      path: '/admin/parents',
-      icon: 'bi-person-hearts',
-      label: 'Parents',
-      permission: 'parents'
-    },
-    {
-      path: '/admin/staff',
-      icon: 'bi-person-badge',
-      label: 'Staff',
-      permission: 'staff'
-    },
-    {
-      path: '/admin/roles',
+      type: 'section',
+      label: 'Roles',
       icon: 'bi-shield-lock',
-      label: 'Roles & Permissions',
-      permission: 'roles'
+      permission: 'roles',
+      submenu: [
+        {
+          path: '/admin/roles',
+          icon: 'bi-shield-check',
+          label: 'Permissions',
+          permission: 'roles'
+        },
+        {
+          path: '/admin/staff-wallets',
+          icon: 'bi-wallet2',
+          label: 'Wallets',
+          permission: 'staff_wallets'
+        }
+      ]
     },
     {
-      path: '/admin/fee-categories',
-      icon: 'bi-tags',
-      label: 'Fee Categories',
-      permission: 'fees'
-    },
-    {
-      path: '/admin/fee-structures',
+      type: 'section',
+      label: 'Fees',
       icon: 'bi-currency-rupee',
-      label: 'Fee Structures',
-      permission: 'fees'
+      permission: 'fees',
+      submenu: [
+        {
+          path: '/admin/fee-categories',
+          icon: 'bi-tags',
+          label: 'Categories',
+          permission: 'fees'
+        },
+        {
+          path: '/admin/fee-structures',
+          icon: 'bi-diagram-3',
+          label: 'Structures',
+          permission: 'fees'
+        },
+        {
+          path: '/admin/fees',
+          icon: 'bi-receipt',
+          label: 'Collection',
+          permission: 'fees'
+        }
+      ]
     },
     {
-      path: '/admin/fees',
-      icon: 'bi-receipt',
-      label: 'Fee Collection',
-      permission: 'fees'
+      type: 'section',
+      label: 'Syllabus',
+      icon: 'bi-journal-text',
+      permission: 'syllabus',
+      submenu: [
+        {
+          path: '/admin/subjects',
+          icon: 'bi-book',
+          label: 'Subjects',
+          permission: 'syllabus'
+        },
+        {
+          path: '/admin/syllabus',
+          icon: 'bi-calendar-week',
+          label: 'Day-wise Syllabus',
+          permission: 'syllabus'
+        }
+      ]
     },
     {
-      path: '/admin/announcements',
+      type: 'section',
+      label: 'Attendance',
+      icon: 'bi-calendar-check',
+      permission: 'attendance',
+      submenu: [
+        {
+          path: '/admin/attendance',
+          icon: 'bi-person-check',
+          label: 'Students',
+          permission: 'attendance'
+        },
+        {
+          path: '/admin/staff-attendance',
+          icon: 'bi-people',
+          label: 'Staff',
+          permission: 'staff_attendance'
+        }
+      ]
+    },
+    {
+      type: 'section',
+      label: 'Communication',
       icon: 'bi-megaphone',
-      label: 'Announcements',
-      permission: 'announcements'
+      permission: 'announcements',
+      submenu: [
+        {
+          path: '/admin/announcements',
+          icon: 'bi-bell',
+          label: 'Notices',
+          permission: 'announcements'
+        },
+        {
+          path: '/admin/complaints',
+          icon: 'bi-chat-dots',
+          label: 'Complaints',
+          permission: 'complaints'
+        }
+      ]
     },
     {
-      path: '/admin/complaints',
-      icon: 'bi-chat-dots',
-      label: 'Complaints',
-      permission: 'complaints'
+      type: 'item',
+      path: '/admin/vision-statements',
+      label: 'Vision Statements',
+      icon: 'bi-lightbulb',
+      permission: 'vision_statements'
     },
     {
-      path: '/admin/staff-wallets',
-      icon: 'bi-wallet2',
-      label: 'Staff Wallets',
-      permission: 'staff_wallets'
-    },
-    {
+      type: 'item',
       path: '/admin/reports',
-      icon: 'bi-graph-up',
       label: 'Reports',
+      icon: 'bi-graph-up',
       permission: 'reports'
     },
     {
+      type: 'item',
       path: '/admin/system-settings',
+      label: 'Settings',
       icon: 'bi-gear',
-      label: 'System Settings',
       permission: 'settings'
     }
   ];
 
-  // Filter menu items based on user permissions
-  const menuItems = allMenuItems.filter(item => {
-    // Always show profile and help (no permission needed)
-    if (item.path === '/admin/profile' || item.path === '/admin/help-support') {
-      return true;
-    }
-    
-    // Check permission for all user types (admin and staff)
-    // This ensures that even admins only see menus they have permission for
-    return hasPermission(item.permission) || 
-           hasPermission(`${item.permission}.view`) ||
-           hasPermission(`${item.permission}.create`) ||
-           hasPermission(`${item.permission}.update`) ||
-           hasPermission(`${item.permission}.delete`);
-  });
+  // Check if user has permission for menu item
+  const hasMenuPermission = (permission) => {
+    if (!permission) return true;
+    return hasPermission(permission) || 
+           hasPermission(`${permission}.view`) ||
+           hasPermission(`${permission}.create`) ||
+           hasPermission(`${permission}.update`) ||
+           hasPermission(`${permission}.delete`);
+  };
 
-  const isActive = (path: string) => {
+  // Filter menu items based on permissions
+  const filteredMenuStructure = menuStructure.map(item => {
+    if (item.type === 'item') {
+      // Direct menu item
+      return hasMenuPermission(item.permission) ? item : null;
+    } else {
+      // Section with submenu
+      const filteredSubmenu = item.submenu.filter(subItem => hasMenuPermission(subItem.permission));
+      return filteredSubmenu.length > 0 ? { ...item, submenu: filteredSubmenu } : null;
+    }
+  }).filter(Boolean);
+
+  // Auto-expand sections that contain active route
+  useEffect(() => {
+    const newExpanded = { ...expandedSections };
+    filteredMenuStructure.forEach((item, index) => {
+      if (item.type === 'section' && item.submenu) {
+        const hasActiveChild = item.submenu.some(subItem => {
+          if (subItem.path === '/admin') {
+            return location.pathname === '/admin' || location.pathname === '/admin/';
+          }
+          return location.pathname.startsWith(subItem.path);
+        });
+        if (hasActiveChild) {
+          newExpanded[index] = true;
+        }
+      }
+    });
+    setExpandedSections(newExpanded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  const toggleSection = (index) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
+
+  const isActive = (path) => {
     if (path === '/admin') {
       return location.pathname === '/admin' || location.pathname === '/admin/';
     }
@@ -190,39 +306,124 @@ const AdminSidebar = ({ show, collapsed, onToggleCollapse, onClose }) => {
       {/* Navigation */}
       <div className="flex-grow-1 overflow-auto">
         <Nav className="flex-column p-3">
-        {menuItems.map((item) => {
-          if (!hasPermission(item.permission)) {
-            return null;
-          }
+          {filteredMenuStructure.map((item, itemIndex) => {
+            if (item.type === 'item') {
+              // Direct menu item
+              return (
+                <Nav.Item key={itemIndex} className="mb-2">
+                  <Nav.Link
+                    as={Link}
+                    to={item.path}
+                    className="text-white d-flex align-items-center p-2 rounded"
+                    style={{ 
+                      textDecoration: 'none',
+                      backgroundColor: isActive(item.path) ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    {collapsed ? (
+                      <i className={`bi ${item.icon} fs-5`}></i>
+                    ) : (
+                      <>
+                        <i className={`bi ${item.icon} me-3`}></i>
+                        <span>{item.label}</span>
+                      </>
+                    )}
+                  </Nav.Link>
+                </Nav.Item>
+              );
+            } else {
+              // Section with submenu
+              const isExpanded = expandedSections[itemIndex];
+              const hasActiveChild = item.submenu && item.submenu.some(subItem => isActive(subItem.path));
 
-          return (
-            <Nav.Item key={item.path} className="mb-1">
-              <Nav.Link
-                as={Link}
-                to={item.path}
-                className={`text-white d-flex align-items-center p-2 rounded`}
-                style={{ 
-                  textDecoration: 'none',
-                  backgroundColor: isActive(item.path) ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
-                  transition: 'background-color 0.2s ease'
-                }}
-              >
-                <i className={`${item.icon} ${collapsed ? 'fs-5' : 'me-3'}`}></i>
-                {!collapsed && <span>{item.label}</span>}
-              </Nav.Link>
-            </Nav.Item>
-          );
-        })}
+              return (
+                <div key={itemIndex} className="mb-2">
+                  {/* Section Header */}
+                  {collapsed ? (
+                    <Nav.Item className="mb-1">
+                      <Nav.Link
+                        className="text-white d-flex align-items-center justify-content-center p-2 rounded"
+                        style={{ 
+                          textDecoration: 'none',
+                          backgroundColor: hasActiveChild ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
+                          transition: 'background-color 0.2s ease'
+                        }}
+                        title={item.label}
+                      >
+                        <i className={`bi ${item.icon} fs-5`}></i>
+                      </Nav.Link>
+                    </Nav.Item>
+                  ) : (
+                    <Nav.Item className="mb-1">
+                      <Nav.Link
+                        className="text-white d-flex align-items-center p-2 rounded"
+                        style={{ 
+                          textDecoration: 'none',
+                          backgroundColor: hasActiveChild ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s ease'
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          toggleSection(itemIndex);
+                        }}
+                      >
+                        <i className={`bi ${item.icon} me-3`}></i>
+                        <span className="flex-grow-1">{item.label}</span>
+                        <i className={`bi ${isExpanded ? 'bi-chevron-down' : 'bi-chevron-right'}`}></i>
+                      </Nav.Link>
+                    </Nav.Item>
+                  )}
+
+                  {/* Submenu Items */}
+                  {!collapsed && isExpanded && item.submenu.map((subItem) => (
+                    <Nav.Item key={subItem.path} className="mb-1 ms-4">
+                      <Nav.Link
+                        as={Link}
+                        to={subItem.path}
+                        className={`text-white d-flex align-items-center p-2 rounded`}
+                        style={{ 
+                          textDecoration: 'none',
+                          backgroundColor: isActive(subItem.path) ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+                          fontSize: '0.9rem',
+                          transition: 'background-color 0.2s ease'
+                        }}
+                      >
+                        <i className={`bi ${subItem.icon} me-2`} style={{ fontSize: '0.85rem' }}></i>
+                        <span>{subItem.label}</span>
+                      </Nav.Link>
+                    </Nav.Item>
+                  ))}
+
+                  {/* Show first submenu item when collapsed */}
+                  {collapsed && item.submenu.length > 0 && (
+                    <Nav.Item className="mb-1">
+                      <Nav.Link
+                        as={Link}
+                        to={item.submenu[0].path}
+                        className="text-white d-flex align-items-center justify-content-center p-2 rounded"
+                        style={{ 
+                          textDecoration: 'none',
+                          backgroundColor: isActive(item.submenu[0].path) ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+                          transition: 'background-color 0.2s ease'
+                        }}
+                        title={item.submenu[0].label}
+                      >
+                        <i className={`bi ${item.submenu[0].icon}`} style={{ fontSize: '0.9rem' }}></i>
+                      </Nav.Link>
+                    </Nav.Item>
+                  )}
+                </div>
+              );
+            }
+          })}
         </Nav>
       </div>
 
-      {/* Footer */}
-      {!collapsed && (
-        <div 
-          className="flex-shrink-0 p-3 mt-auto"
-          style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}
-        />
-      )}
+      {/* Footer with Vision Statement */}
+      
 
     </div>
   );

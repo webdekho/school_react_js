@@ -70,7 +70,7 @@ class Staff_wallet_model extends CI_Model {
     /**
      * Add amount to staff wallet (when fee is collected)
      */
-    public function add_collection($staff_id, $amount, $reference_id, $description = null, $receipt_number = null) {
+    public function add_collection($staff_id, $amount, $reference_id, $description = null, $receipt_number = null, $payment_mode = null) {
         $this->db->trans_start();
         
         try {
@@ -105,6 +105,7 @@ class Staff_wallet_model extends CI_Model {
                 'reference_id' => $reference_id,
                 'reference_type' => 'fee_collection',
                 'description' => $description ?: "Fee collection - Receipt: $receipt_number",
+                'payment_mode' => $payment_mode,
                 'transaction_date' => date('Y-m-d'),
                 'created_at' => date('Y-m-d H:i:s')
             ];
@@ -129,7 +130,7 @@ class Staff_wallet_model extends CI_Model {
     /**
      * Process withdrawal from staff wallet (admin action)
      */
-    public function process_withdrawal($staff_id, $amount, $admin_id, $description = null, $payment_method = 'cash') {
+    public function process_withdrawal($staff_id, $amount, $admin_id, $description = null, $payment_mode = 'cash') {
         $this->db->trans_start();
         
         try {
@@ -156,12 +157,13 @@ class Staff_wallet_model extends CI_Model {
             // Add ledger entry
             $ledger_data = [
                 'staff_id' => $staff_id,
-                'transaction_type' => 'withdrawal',
+                'transaction_type' => 'transfer', // Using existing enum value
                 'amount' => -$amount, // Negative for withdrawal
                 'balance' => $balance_after,
                 'reference_id' => $admin_id,
                 'reference_type' => 'admin_withdrawal',
-                'description' => $description ?: "Withdrawal processed by admin - $payment_method",
+                'description' => $description ?: "Withdrawal processed by admin",
+                'payment_mode' => $payment_mode,
                 'transaction_date' => date('Y-m-d'),
                 'created_at' => date('Y-m-d H:i:s')
             ];

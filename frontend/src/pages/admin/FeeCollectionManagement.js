@@ -22,11 +22,25 @@ const FeeCollectionManagement = () => {
   const [selectedOptionalFees, setSelectedOptionalFees] = useState([]);
   const [collectionData, setCollectionData] = useState({
     amount: '',
-    payment_method: 'cash',
+    payment_mode: 'cash',
     reference_number: '',
-    remarks: ''
+    remarks: '',
+    semester: 'Semester 1' // Make semester mandatory
   });
   const [errors, setErrors] = useState({});
+
+  // Modal tab state
+  const [modalActiveTab, setModalActiveTab] = useState('pending');
+  
+  // Direct payment state
+  const [isDirectPayment, setIsDirectPayment] = useState(false);
+  const [directPaymentData, setDirectPaymentData] = useState({
+    category_id: '',
+    category_name: '',
+    amount: '',
+    due_date: new Date().toISOString().split('T')[0],
+    description: ''
+  });
 
   // Receipt modal state
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -43,7 +57,7 @@ const FeeCollectionManagement = () => {
   });
   const [collectionFilters, setCollectionFilters] = useState({
     staff_id: '',
-    payment_method: '',
+    payment_mode: '',
     category_id: ''
   });
 
@@ -59,14 +73,10 @@ const FeeCollectionManagement = () => {
   const [filteredCollectionCategories, setFilteredCollectionCategories] = useState([]);
   const [filteredStructureCategories, setFilteredStructureCategories] = useState([]);
 
-  // Direct payment states
-  const [isDirectPayment, setIsDirectPayment] = useState(false);
-  const [directPaymentData, setDirectPaymentData] = useState({
-    category_id: '',
-    category_name: '',
-    amount: '',
-    due_date: new Date().toISOString().split('T')[0],
-    description: ''
+  // Optional fees filter states
+  const [optionalFeesFilter, setOptionalFeesFilter] = useState({
+    grade_id: 'all', // 'all' for global + student's grade, 'global' for global only, specific grade_id for that grade
+    show_global: true
   });
 
   // Fee category search states
@@ -146,18 +156,19 @@ const FeeCollectionManagement = () => {
 
   // Get available optional fees for the selected student
   const { data: availableOptionalFeesResponse, isLoading: optionalFeesLoading } = useQuery({
-    queryKey: ['available_optional_fees', selectedStudent?.id, selectedStudent?.grade_id],
+    queryKey: ['available_optional_fees', selectedStudent?.id, selectedStudent?.grade_id, selectedAcademicYear?.id, collectionData.semester],
     queryFn: async () => {
-      if (!selectedStudent?.id || !selectedStudent?.grade_id) {
+      if (!selectedStudent?.id || !selectedStudent?.grade_id || !selectedAcademicYear?.id) {
         return { data: [] };
       }
       
+      const semester = collectionData.semester || 'Semester 1';
       const response = await apiService.get(
-        `/api/admin/available_optional_fees/${selectedStudent.id}?grade_id=${selectedStudent.grade_id}`
+        `/api/admin/available_optional_fees/${selectedStudent.id}?grade_id=${selectedStudent.grade_id}&academic_year_id=${selectedAcademicYear.id}&semester=${semester}&include_global=true`
       );
       return response.data;
     },
-    enabled: !!selectedStudent?.id && !!selectedStudent?.grade_id
+    enabled: !!selectedStudent?.id && !!selectedStudent?.grade_id && !!selectedAcademicYear?.id
   });
 
   // Fee collections with pagination
@@ -182,8 +193,8 @@ const FeeCollectionManagement = () => {
       if (collectionFilters.staff_id) {
         params.append('staff_id', collectionFilters.staff_id);
       }
-      if (collectionFilters.payment_method) {
-        params.append('payment_method', collectionFilters.payment_method);
+      if (collectionFilters.payment_mode) {
+        params.append('payment_mode', collectionFilters.payment_mode);
       }
       if (collectionFilters.category_id) {
         params.append('category_id', collectionFilters.category_id);
@@ -227,9 +238,9 @@ const FeeCollectionManagement = () => {
       if (debouncedStructureSearch) {
         params.append('search', debouncedStructureSearch);
       }
-      if (structureFilters.grade_id) {
-        params.append('grade_id', structureFilters.grade_id);
-      }
+      // Note: We don't filter by grade_id here because we want to show 
+      // both grade-specific AND global fee structures for better visibility
+      // The frontend will handle filtering if needed
       if (structureFilters.category_id) {
         params.append('category_id', structureFilters.category_id);
       }
@@ -375,7 +386,6 @@ const FeeCollectionManagement = () => {
     onSuccess: async (response) => {
       queryClient.invalidateQueries(['fee_collections']);
       queryClient.invalidateQueries(['student_fees']);
-      toast.success('Fee collected successfully!');
       setShowCollectModal(false);
       resetCollectionForm();
       
@@ -396,37 +406,17 @@ const FeeCollectionManagement = () => {
           if (receiptData && receiptData.receipt_number) {
             setSelectedReceipt(receiptData);
             setShowReceiptModal(true);
-            toast.success(
-              (t) => (
-                <div className="d-flex align-items-center justify-content-between">
-                  <span>
-                    <i className="bi bi-check-circle-fill text-success me-2"></i>
-                    Receipt {receiptData.receipt_number} generated and ready to print!
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline-primary"
-                    className="ms-3"
-                    onClick={() => {
-                      toast.dismiss(t.id);
-                      setShowReceiptModal(true);
-                    }}
-                  >
-                    <i className="bi bi-printer me-1"></i>
-                    Print Now
-                  </Button>
-                </div>
-              ),
-              {
-                duration: 8000,
-                id: 'receipt-generated'
-              }
-            );
+            // Show only the API response message
+            toast.success(response.data?.message || 'Fee collected successfully');
           }
         } catch (receiptError) {
           console.error('Error fetching receipt details:', receiptError);
-          toast.error('Fee collected but failed to load receipt details');
+          // Still show success message from API response
+          toast.success(response.data?.message || 'Fee collected successfully');
         }
+      } else {
+        // If no collection ID, still show success message
+        toast.success(response.data?.message || 'Fee collected successfully');
       }
     },
     onError: (error) => {
@@ -542,9 +532,10 @@ const FeeCollectionManagement = () => {
   const resetCollectionForm = () => {
     setCollectionData({
       amount: '',
-      payment_method: 'cash',
+      payment_mode: 'cash',
       reference_number: '',
-      remarks: ''
+      remarks: '',
+      semester: 'Semester 1'
     });
     setSelectedStudent(null);
     setSelectedAssignment(null);
@@ -553,6 +544,7 @@ const FeeCollectionManagement = () => {
     setCategorySearch('');
     setShowCategoryDropdown(false);
     setErrors({});
+    setModalActiveTab('pending');
     setIsDirectPayment(false);
     setDirectPaymentData({
       category_id: '',
@@ -560,6 +552,10 @@ const FeeCollectionManagement = () => {
       amount: '',
       due_date: new Date().toISOString().split('T')[0],
       description: ''
+    });
+    setOptionalFeesFilter({
+      grade_id: 'all',
+      show_global: true
     });
   };
 
@@ -589,15 +585,18 @@ const FeeCollectionManagement = () => {
     }
     
     if (isDirectPayment) {
-      // Validation for direct payment
+      // Validation for direct payment (Other Payment tab)
       if (!directPaymentData.category_id) {
         newErrors.category = 'Please select a fee category';
       }
-      if (!directPaymentData.amount || parseFloat(directPaymentData.amount) <= 0) {
+      if (!collectionData.remarks || collectionData.remarks.trim() === '') {
+        newErrors.remarks = 'Payment description is required for other payments';
+      }
+      if (!collectionData.amount || parseFloat(collectionData.amount) <= 0) {
         newErrors.amount = 'Amount must be greater than 0';
       }
     } else {
-      // Validation for assigned fee payment
+      // Validation for assigned fee payment (Pending Payment tab)
       if (!selectedAssignment && selectedOptionalFees.length === 0) {
         newErrors.assignment = 'Please select at least one fee to collect';
       }
@@ -609,10 +608,10 @@ const FeeCollectionManagement = () => {
     if (!collectionData.amount || parseFloat(collectionData.amount) <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
     }
-    if (!collectionData.payment_method) {
-      newErrors.payment_method = 'Payment method is required';
+    if (!collectionData.payment_mode) {
+      newErrors.payment_mode = 'Payment mode is required';
     }
-    if (['card', 'online', 'cheque', 'dd'].includes(collectionData.payment_method) && !collectionData.reference_number) {
+    if (['card', 'online', 'cheque', 'dd'].includes(collectionData.payment_mode) && !collectionData.reference_number) {
       newErrors.reference_number = 'Reference number is required for this payment method';
     }
     
@@ -624,19 +623,21 @@ const FeeCollectionManagement = () => {
     const paymentData = {
       student_id: selectedStudent.id,
       amount: parseFloat(collectionData.amount),
-      payment_method: collectionData.payment_method,
+      payment_mode: collectionData.payment_mode,
       reference_number: collectionData.reference_number || null,
-      remarks: collectionData.remarks || null
+      remarks: collectionData.remarks || null,
+      semester: collectionData.semester
     };
 
     if (isDirectPayment) {
-      // For direct payments, we need to create a fee assignment first or use a different API
-      paymentData.fee_category_id = directPaymentData.category_id;
-      paymentData.direct_fee_due_date = directPaymentData.due_date;
-      paymentData.direct_fee_description = directPaymentData.description || `Direct payment for ${directPaymentData.category_name}`;
+      // For other payments (direct payments without specific fee structure)
       paymentData.is_direct_payment = 1;
+      paymentData.fee_category_id = directPaymentData.category_id;
+      paymentData.direct_fee_description = collectionData.remarks;
+      // Remove semester requirement for direct payments
+      delete paymentData.semester;
     } else {
-      // Handle both mandatory and optional fees
+      // Handle both mandatory and optional fees (Pending Payment tab)
       if (selectedAssignment) {
         paymentData.student_fee_assignment_id = selectedAssignment.id;
       }
@@ -798,8 +799,8 @@ const FeeCollectionManagement = () => {
       'Division': collection.division_name,
       'Category': collection.category_name || 'Direct Payment',
       'Amount': collection.amount,
-      'Payment Method': collection.payment_method?.toUpperCase(),
-      'Collected By': collection.collected_by_staff_name || 'Unknown',
+      'Payment Mode': collection.payment_mode?.toUpperCase(),
+      'Collected By': collection.collected_by_name || 'Unknown',
       'Collection Date': new Date(collection.collection_date).toLocaleDateString('en-IN'),
       'Status': collection.is_verified ? 'Verified' : 'Pending',
       'Remarks': collection.remarks || ''
@@ -879,10 +880,10 @@ const FeeCollectionManagement = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h4 className="mb-0">
-            <i className="bi bi-receipt me-2"></i>
+          <h5 className="mb-0 fw-semibold" style={{ fontSize: '1.1rem' }}>
+            <i className="bi bi-receipt me-2" style={{ fontSize: '1rem' }}></i>
             Fee Collection Management
-          </h4>
+          </h5>
           <small className="text-muted">
             <i className="bi bi-calendar-range me-1"></i>
             {getFormattedAcademicYear()}
@@ -961,15 +962,17 @@ const FeeCollectionManagement = () => {
                 </Col>
                 <Col md={2}>
                   <Form.Select
-                    value={collectionFilters.payment_method}
-                    onChange={(e) => setCollectionFilters(prev => ({ ...prev, payment_method: e.target.value }))}
+                    value={collectionFilters.payment_mode}
+                    onChange={(e) => setCollectionFilters(prev => ({ ...prev, payment_mode: e.target.value }))}
                   >
-                    <option value="">All Methods</option>
+                    <option value="">All Modes</option>
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
                     <option value="online">Online</option>
                     <option value="cheque">Cheque</option>
                     <option value="dd">DD</option>
+                    <option value="upi">UPI</option>
+                    <option value="bank_transfer">Bank Transfer</option>
                   </Form.Select>
                 </Col>
                 <Col md={1} className="text-end">
@@ -979,7 +982,7 @@ const FeeCollectionManagement = () => {
                     onClick={() => {
                       setSearchTerm('');
                       setDateFilter({ start_date: '', end_date: '' });
-                      setCollectionFilters({ staff_id: '', payment_method: '', category_id: '' });
+                      setCollectionFilters({ staff_id: '', payment_mode: '', category_id: '' });
                       setCollectionCategorySearch('');
                       setShowCollectionCategoryDropdown(false);
                       setCurrentPage(1);
@@ -1107,8 +1110,8 @@ const FeeCollectionManagement = () => {
                           </td>
                           <td>
                             <div className="d-flex align-items-center">
-                              <i className={`${getPaymentMethodIcon(collection.payment_method)} me-2`}></i>
-                              {collection.payment_method.toUpperCase()}
+                              <i className={`${getPaymentMethodIcon(collection.payment_mode)} me-2`}></i>
+                              {collection.payment_mode?.toUpperCase() || 'N/A'}
                               {collection.reference_number && (
                                 <small className="text-muted ms-2">({collection.reference_number})</small>
                               )}
@@ -1116,9 +1119,9 @@ const FeeCollectionManagement = () => {
                           </td>
                           <td>
                             <div>
-                              <div className="fw-medium">{collection.collected_by_staff_name || 'Unknown'}</div>
-                              {collection.collected_by_staff_id && (
-                                <small className="text-muted">ID: {collection.collected_by_staff_id}</small>
+                              <div className="fw-medium">{collection.collected_by_name || 'Unknown'}</div>
+                              {collection.collected_by_id && (
+                                <small className="text-muted">ID: {collection.collected_by_id}</small>
                               )}
                             </div>
                           </td>
@@ -1181,25 +1184,29 @@ const FeeCollectionManagement = () => {
       </Tabs>
 
       {/* Fee Collection Modal */}
-      <Modal show={showCollectModal} onHide={() => setShowCollectModal(false)} size="lg" centered>
-        <div className="modal-content border-0 shadow-lg">
-          <Modal.Header className="bg-gradient-collection text-white border-0" closeButton>
-            <Modal.Title className="d-flex align-items-center fs-4">
-              <div className="modal-icon-wrapper me-3">
-                <i className="bi bi-currency-rupee fs-3"></i>
-              </div>
-              <div>
-                <h5 className="mb-0">Collect Fee</h5>
-                <small className="opacity-75">Process student fee payment</small>
-              </div>
-            </Modal.Title>
-          </Modal.Header>
+      <Modal show={showCollectModal} onHide={() => setShowCollectModal(false)} size="xl" centered>
+        <Modal.Header className="bg-gradient-collection text-white border-0 py-3" closeButton>
+          <Modal.Title className="d-flex align-items-center">
+            <i className="bi bi-currency-rupee me-2"></i>
+            <span>Fee Collection</span>
+          </Modal.Title>
+        </Modal.Header>
 
-          <Form onSubmit={handleCollectionSubmit}>
-            <Modal.Body className="p-4">
+        <Form onSubmit={handleCollectionSubmit}>
+          <Modal.Body className="p-4">
+            <Tabs 
+              activeKey={modalActiveTab} 
+              onSelect={(key) => {
+                setModalActiveTab(key);
+                setIsDirectPayment(key === 'other');
+                setErrors({});
+              }} 
+              className="mb-4"
+            >
+              <Tab eventKey="pending" title="Pending Payment">
               {/* Student Search */}
               <div className="mb-4">
-                <label className="form-label fw-medium">
+                <label className="form-label fw-medium text-dark">
                   <i className="bi bi-person-search me-2"></i>Search Student *
                 </label>
                 <Form.Control
@@ -1275,41 +1282,39 @@ const FeeCollectionManagement = () => {
                   </Card.Header>
 
                   <Card.Body>
-                    <label className="form-label fw-medium">
-                      <i className="bi bi-list-check me-2"></i>Select Fees to Collect *
-                    </label>
-                    
                     {feesLoading ? (
                       <div className="text-center p-3">
                         <Spinner size="sm" />
                       </div>
                     ) : (
                       <div>
-                        {/* Mandatory Fees Section */}
-                        {studentFeesResponse?.data?.length > 0 && (
+                        {/* All Fees Section - Combined Mandatory and Optional */}
+                        {(studentFeesResponse?.data?.length > 0 || availableOptionalFeesResponse?.data?.length > 0) && (
                           <div className="mb-4">
-                            <h6 className="text-primary mb-3">
-                              <i className="bi bi-exclamation-triangle me-2"></i>
-                              Mandatory Fees
-                            </h6>
-                            <div className="max-height-200 overflow-auto">
-                              {studentFeesResponse.data
-                                .filter(fee => fee.status !== 'paid' && fee.is_mandatory == 1)
+                            <div className="max-height-300 overflow-auto">
+                              <Row>
+                              {/* Mandatory Fees */}
+                              {studentFeesResponse?.data
+                                ?.filter(fee => fee.status !== 'paid' && fee.is_mandatory == 1)
                                 .map((fee) => (
+                                <Col md={6} key={`mandatory-${fee.id}`}>
                                 <div 
-                                  key={fee.id}
-                                  className={`p-3 border rounded mb-2 cursor-pointer ${selectedAssignment?.id === fee.id ? 'border-primary bg-primary bg-opacity-10' : 'border-light hover-bg-light'}`}
+                                  className={`p-3 border rounded mb-2 cursor-pointer ${selectedAssignment?.id === fee.id ? 'border-primary bg-primary bg-opacity-10' : 'border-left-primary border-light hover-bg-light'}`}
                                   onClick={() => handleAssignmentSelect(fee)}
-                                  style={{ cursor: 'pointer' }}
+                                  style={{ cursor: 'pointer', borderLeft: '4px solid #0d6efd' }}
                                 >
-                                  <div className="d-flex justify-content-between align-items-center">
-                                    <div>
-                                      <div className="fw-medium">{fee.category_name}</div>
-                                      <small className="text-muted">
+                                  <div className="d-flex flex-column">
+                                    <div className="mb-2">
+                                      <div className="d-flex align-items-center mb-1">
+                                        <span className="badge bg-danger me-2">MANDATORY</span>
+                                        <span className="fw-medium">{fee.category_name}</span>
+                                      </div>
+                                      <small className="text-muted d-block">
+                                        <i className="bi bi-calendar me-1"></i>
                                         Due: {new Date(fee.due_date).toLocaleDateString()}
                                       </small>
                                     </div>
-                                    <div className="text-end">
+                                    <div>
                                       <div className="fw-bold text-success">
                                         {formatCurrency(fee.pending_amount)}
                                       </div>
@@ -1321,44 +1326,58 @@ const FeeCollectionManagement = () => {
                                     </div>
                                   </div>
                                 </div>
+                                </Col>
                               ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Optional Fees Section */}
-                        {availableOptionalFeesResponse?.data?.length > 0 && (
-                          <div className="mb-4">
-                            <h6 className="text-secondary mb-3">
-                              <i className="bi bi-check-square me-2"></i>
-                              Optional Fees (Select as needed)
-                            </h6>
-                            <div className="max-height-200 overflow-auto">
-                              {availableOptionalFeesResponse.data.map((fee) => (
+                              
+                              {/* Optional Fees */}
+                              {availableOptionalFeesResponse?.data?.map((fee) => (
+                                <Col md={6} key={`optional-${fee.id}`}>
                                 <div 
-                                  key={fee.id}
-                                  className={`p-3 border rounded mb-2 cursor-pointer ${selectedOptionalFees.some(f => f.id === fee.id) ? 'border-success bg-success bg-opacity-10' : 'border-light hover-bg-light'}`}
+                                  className={`p-3 border rounded mb-2 cursor-pointer ${selectedOptionalFees.some(f => f.id === fee.id) ? 'border-success bg-success bg-opacity-10' : 'border-left-success border-light hover-bg-light'}`}
                                   onClick={() => handleOptionalFeeToggle(fee)}
-                                  style={{ cursor: 'pointer' }}
+                                  style={{ cursor: 'pointer', borderLeft: '4px solid #198754' }}
                                 >
-                                  <div className="d-flex justify-content-between align-items-center">
-                                    <div>
-                                      <div className="fw-medium">{fee.category_name}</div>
-                                      <small className="text-muted">
-                                        {fee.description || 'Optional fee'}
+                                  <div className="d-flex flex-column">
+                                    <div className="mb-2">
+                                      <div className="d-flex align-items-center flex-wrap mb-1">
+                                        <span className="badge bg-secondary me-2">OPTIONAL</span>
+                                        <span className="fw-medium">{fee.category_name}</span>
+                                        {fee.is_global && (
+                                          <span className="badge bg-primary ms-2">
+                                            <i className="bi bi-globe me-1"></i>GLOBAL
+                                          </span>
+                                        )}
+                                      </div>
+                                      <small className="text-muted d-block">
+                                        {fee.is_global ? (
+                                          <span className="text-primary fw-medium">
+                                            <i className="bi bi-globe me-1"></i>
+                                            Applies to All Grades
+                                          </span>
+                                        ) : (
+                                          <span>
+                                            <i className="bi bi-bookmark me-1"></i>
+                                            {fee.grade_name || 'Grade-specific'}
+                                          </span>
+                                        )}
+                                        {fee.description && (
+                                          <><br />{fee.description}</>
+                                        )}
                                       </small>
                                     </div>
-                                    <div className="text-end">
+                                    <div>
                                       <div className="fw-bold text-success">
                                         {formatCurrency(fee.amount)}
                                       </div>
                                       <div className="small text-muted">
-                                        Optional
+                                        {fee.is_global ? 'Global Fee' : 'Grade-specific Fee'}
                                       </div>
                                     </div>
                                   </div>
                                 </div>
+                                </Col>
                               ))}
+                              </Row>
                             </div>
                           </div>
                         )}
@@ -1366,30 +1385,10 @@ const FeeCollectionManagement = () => {
                         {/* No Fees Available */}
                         {(!studentFeesResponse?.data?.length || studentFeesResponse.data.filter(fee => fee.status !== 'paid' && fee.is_mandatory == 1).length === 0) && 
                          (!availableOptionalFeesResponse?.data?.length || availableOptionalFeesResponse.data.length === 0) && (
-                          <div>
-                            <Alert variant="info" className="mb-3">
-                              <i className="bi bi-info-circle me-2"></i>
-                              No pending fees found for this student.
-                            </Alert>
-                            
-                            <div className="border rounded p-3 bg-light">
-                              <h6 className="mb-3">
-                                <i className="bi bi-plus-circle me-2"></i>
-                                Collect Direct Payment
-                              </h6>
-                              <p className="text-muted small mb-3">
-                                For non-semester fees like events, penalties, or other miscellaneous charges.
-                              </p>
-                              <Button 
-                                variant="primary" 
-                                size="sm"
-                                onClick={() => handleCreateDirectPayment()}
-                              >
-                                <i className="bi bi-currency-rupee me-2"></i>
-                                Create Direct Payment
-                              </Button>
-                            </div>
-                          </div>
+                          <Alert variant="info" className="mb-3">
+                            <i className="bi bi-info-circle me-2"></i>
+                            No pending fees found for this student in {collectionData.semester}.
+                          </Alert>
                         )}
 
                         {/* Total Amount Display */}
@@ -1420,7 +1419,32 @@ const FeeCollectionManagement = () => {
 
               {/* Collection Details */}
               {(selectedAssignment || selectedOptionalFees.length > 0) && (
-                <Row>
+                <Row className="mt-4">
+                  <Col md={6}>
+                    <div className="form-floating mb-3">
+                      <Form.Select
+                        value={collectionData.payment_mode}
+                        onChange={(e) => handleInputChange('payment_mode', e.target.value)}
+                        isInvalid={!!errors.payment_mode}
+                        id="paymentMethod"
+                      >
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="online">Online Transfer</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="dd">Demand Draft</option>
+                        <option value="upi">UPI</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                      </Form.Select>
+                      <label htmlFor="paymentMethod">
+                        <i className="bi bi-credit-card me-2"></i>Payment Mode *
+                      </label>
+                      <Form.Control.Feedback type="invalid">
+                        {errors.payment_mode}
+                      </Form.Control.Feedback>
+                    </div>
+                  </Col>
+
                   <Col md={6}>
                     <div className="form-floating mb-3">
                       <Form.Control
@@ -1447,30 +1471,7 @@ const FeeCollectionManagement = () => {
                     </div>
                   </Col>
 
-                  <Col md={6}>
-                    <div className="form-floating mb-3">
-                      <Form.Select
-                        value={collectionData.payment_method}
-                        onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                        isInvalid={!!errors.payment_method}
-                        id="paymentMethod"
-                      >
-                        <option value="cash">Cash</option>
-                        <option value="card">Card</option>
-                        <option value="online">Online Transfer</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="dd">Demand Draft</option>
-                      </Form.Select>
-                      <label htmlFor="paymentMethod">
-                        <i className="bi bi-credit-card me-2"></i>Payment Method *
-                      </label>
-                      <Form.Control.Feedback type="invalid">
-                        {errors.payment_method}
-                      </Form.Control.Feedback>
-                    </div>
-                  </Col>
-
-                  {['card', 'online', 'cheque', 'dd'].includes(collectionData.payment_method) && (
+                  {['card', 'online', 'cheque', 'dd'].includes(collectionData.payment_mode) && (
                     <Col md={6}>
                       <div className="form-floating mb-3">
                         <Form.Control
@@ -1491,7 +1492,7 @@ const FeeCollectionManagement = () => {
                     </Col>
                   )}
 
-                  <Col md={collectionData.payment_method === 'cash' ? 12 : 6}>
+                  <Col md={collectionData.payment_mode === 'cash' ? 12 : 6}>
                     <div className="form-floating mb-3">
                       <Form.Control
                         as="textarea"
@@ -1509,199 +1510,192 @@ const FeeCollectionManagement = () => {
                   </Col>
                 </Row>
               )}
+              </Tab>
 
-              {/* Direct Payment Form */}
-              {isDirectPayment && (
-                <Card className="border-warning">
-                  <Card.Header className="bg-warning bg-opacity-10">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <h6 className="mb-0">
-                        <i className="bi bi-currency-rupee me-2"></i>Direct Payment Details
-                      </h6>
-                      <Button 
-                        variant="outline-warning" 
-                        size="sm"
-                        onClick={handleCancelDirectPayment}
-                      >
-                        <i className="bi bi-x me-1"></i>Cancel
-                      </Button>
+              <Tab eventKey="other" title="Other Payment">
+                {/* Student Search for Other Payment */}
+                <div className="mb-4">
+                  <label className="form-label fw-medium text-dark">
+                    <i className="bi bi-person-search me-2"></i>Search Student *
+                  </label>
+                  <Form.Control
+                    type="text"
+                    placeholder="Enter student name, roll number, or mobile..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    isInvalid={!!errors.student}
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    {errors.student}
+                  </Form.Control.Feedback>
+
+                  {/* Student Search Results */}
+                  {studentsLoading && studentSearch && (
+                    <div className="mt-2 p-2 border rounded bg-light">
+                      <Spinner size="sm" className="me-2" />
+                      Searching...
                     </div>
-                  </Card.Header>
-                  <Card.Body>
-                    <Row>
-                      <Col md={6}>
-                        <div className="mb-3 position-relative">
-                          <div className="form-floating">
-                            <Form.Control
-                              type="text"
-                              value={categorySearch}
-                              onChange={(e) => handleCategorySearchChange(e.target.value)}
-                              onFocus={handleCategorySearchFocus}
-                              onBlur={handleCategorySearchBlur}
-                              placeholder="Search fee category"
+                  )}
+
+                  {studentsResponse?.data?.length > 0 && (
+                    <div className="mt-2 border rounded max-height-200 overflow-auto">
+                      {studentsResponse.data.map((student) => (
+                        <div 
+                          key={student.id}
+                          className="p-2 border-bottom cursor-pointer hover-bg-light"
+                          onClick={() => handleStudentSelect(student)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="d-flex justify-content-between">
+                            <div>
+                              <div className="fw-medium">{student.student_name}</div>
+                              <small className="text-muted">
+                                {student.roll_number} - {student.grade_name} {student.division_name}
+                              </small>
+                            </div>
+                            <small className="text-muted">{student.parent_mobile}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Student Info for Other Payment */}
+                {selectedStudent && (
+                  <Card className="mb-4 border-primary">
+                    <Card.Header className="bg-light">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <div>
+                          <h6 className="mb-0">
+                            <i className="bi bi-person-check-fill me-2 text-success"></i>
+                            {selectedStudent.student_name}
+                          </h6>
+                          <small className="text-muted">
+                            {selectedStudent.roll_number} - {selectedStudent.grade_name} {selectedStudent.division_name}
+                          </small>
+                        </div>
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="text-danger p-0"
+                          onClick={() => {
+                            setSelectedStudent(null);
+                            setStudentSearch('');
+                          }}
+                        >
+                          <i className="bi bi-x-circle"></i>
+                        </Button>
+                      </div>
+                    </Card.Header>
+
+                    <Card.Body>
+                      {/* Direct Payment Details */}
+                      <Row>
+                        <Col md={6}>
+                          <div className="form-floating mb-3">
+                            <Form.Select
+                              id="otherPaymentCategory"
+                              value={directPaymentData.category_id}
+                              onChange={(e) => {
+                                setDirectPaymentData({ ...directPaymentData, category_id: e.target.value });
+                                setErrors({ ...errors, category: '' });
+                              }}
                               isInvalid={!!errors.category}
-                              id="feeCategory"
-                              disabled={categoriesLoading}
-                              autoComplete="off"
-                            />
-                            <label htmlFor="feeCategory">
-                              <i className="bi bi-tags me-2"></i>Fee Category *
-                            </label>
+                            >
+                              <option value="">Select Fee Category</option>
+                              {categories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </Form.Select>
+                            <Form.Label htmlFor="otherPaymentCategory">
+                              <i className="bi bi-folder me-2"></i>Fee Category *
+                            </Form.Label>
                             <Form.Control.Feedback type="invalid">
                               {errors.category}
                             </Form.Control.Feedback>
                           </div>
-                          
-                          {/* Dropdown for search results */}
-                          {showCategoryDropdown && !categoriesLoading && (
-                            <div className="position-absolute w-100 bg-white border border-top-0 rounded-bottom shadow-sm" style={{ zIndex: 1050, maxHeight: '200px', overflowY: 'auto' }}>
-                              {filteredCategories.length > 0 ? (
-                                filteredCategories.map((category) => (
-                                  <div
-                                    key={category.id}
-                                    className="p-2 border-bottom d-flex align-items-center"
-                                    onClick={() => handleCategorySelect(category)}
-                                    style={{ 
-                                      cursor: 'pointer',
-                                      transition: 'background-color 0.15s ease-in-out'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#f8f9fa';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = '';
-                                    }}
-                                  >
-                                    <i className="bi bi-tag me-2 text-muted"></i>
-                                    <div>
-                                      <div className="fw-medium">{category.name}</div>
-                                      {category.description && (
-                                        <small className="text-muted">{category.description}</small>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="p-3 text-center text-muted">
-                                  <i className="bi bi-search me-2"></i>
-                                  No categories found matching "{categorySearch}"
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {categoriesLoading && (
-                            <div className="position-absolute w-100 bg-white border border-top-0 rounded-bottom shadow-sm p-3 text-center text-muted" style={{ zIndex: 1050 }}>
-                              <Spinner size="sm" className="me-2" />
-                              Loading categories...
-                            </div>
-                          )}
-                        </div>
-                      </Col>
+                        </Col>
 
-                      <Col md={6}>
-                        <div className="form-floating mb-3">
-                          <Form.Control
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={directPaymentData.amount}
-                            onChange={(e) => handleDirectPaymentChange('amount', e.target.value)}
-                            placeholder="Amount"
-                            isInvalid={!!errors.amount}
-                            id="directAmount"
-                          />
-                          <label htmlFor="directAmount">
-                            <i className="bi bi-currency-rupee me-2"></i>Amount *
-                          </label>
-                          <Form.Control.Feedback type="invalid">
-                            {errors.amount}
-                          </Form.Control.Feedback>
-                          <small className="text-muted">
-                            <i className="bi bi-info-circle me-1"></i>
-                            Amount will be auto-filled when you select a fee category (if predefined)
-                          </small>
-                        </div>
-                      </Col>
-
-                      <Col md={6}>
-                        <div className="form-floating mb-3">
-                          <Form.Select
-                            value={collectionData.payment_method}
-                            onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                            isInvalid={!!errors.payment_method}
-                            id="directPaymentMethod"
-                          >
-                            <option value="cash">Cash</option>
-                            <option value="card">Card</option>
-                            <option value="online">Online Transfer</option>
-                            <option value="cheque">Cheque</option>
-                            <option value="dd">Demand Draft</option>
-                          </Form.Select>
-                          <label htmlFor="directPaymentMethod">
-                            <i className="bi bi-credit-card me-2"></i>Payment Method *
-                          </label>
-                          <Form.Control.Feedback type="invalid">
-                            {errors.payment_method}
-                          </Form.Control.Feedback>
-                        </div>
-                      </Col>
-
-                      <Col md={6}>
-                        <div className="form-floating mb-3">
-                          <Form.Control
-                            type="date"
-                            value={directPaymentData.due_date}
-                            onChange={(e) => handleDirectPaymentChange('due_date', e.target.value)}
-                            id="dueDate"
-                          />
-                          <label htmlFor="dueDate">
-                            <i className="bi bi-calendar me-2"></i>Due Date
-                          </label>
-                        </div>
-                      </Col>
-
-                      {collectionData.payment_method !== 'cash' && (
                         <Col md={6}>
                           <div className="form-floating mb-3">
                             <Form.Control
+                              id="otherPaymentDescription"
                               type="text"
-                              value={collectionData.reference_number}
-                              onChange={(e) => handleInputChange('reference_number', e.target.value)}
-                              placeholder="Reference Number"
-                              isInvalid={!!errors.reference_number}
-                              id="directRefNumber"
+                              placeholder="Payment Description"
+                              value={collectionData.remarks}
+                              onChange={(e) => setCollectionData({ ...collectionData, remarks: e.target.value })}
+                              isInvalid={!!errors.remarks}
                             />
-                            <label htmlFor="directRefNumber">
-                              <i className="bi bi-hash me-2"></i>Reference Number *
-                            </label>
+                            <Form.Label htmlFor="otherPaymentDescription">
+                              <i className="bi bi-tag me-2"></i>Payment Description *
+                            </Form.Label>
                             <Form.Control.Feedback type="invalid">
-                              {errors.reference_number}
+                              {errors.remarks}
                             </Form.Control.Feedback>
                           </div>
                         </Col>
-                      )}
 
-                      <Col md={12}>
-                        <div className="form-floating mb-3">
-                          <Form.Control
-                            as="textarea"
-                            rows={2}
-                            value={directPaymentData.description}
-                            onChange={(e) => handleDirectPaymentChange('description', e.target.value)}
-                            placeholder="Description"
-                            style={{ minHeight: '80px' }}
-                            id="directDescription"
-                          />
-                          <label htmlFor="directDescription">
-                            <i className="bi bi-chat-text me-2"></i>Description (Optional)
-                          </label>
-                        </div>
-                      </Col>
-                    </Row>
-                  </Card.Body>
-                </Card>
-              )}
+                        <Col md={6}>
+                          <div className="form-floating mb-3">
+                            <Form.Control
+                              id="otherPaymentAmount"
+                              type="number"
+                              placeholder="Amount"
+                              value={collectionData.amount}
+                              onChange={(e) => setCollectionData({ ...collectionData, amount: e.target.value })}
+                              isInvalid={!!errors.amount}
+                            />
+                            <Form.Label htmlFor="otherPaymentAmount">
+                              <i className="bi bi-currency-rupee me-2"></i>Amount *
+                            </Form.Label>
+                            <Form.Control.Feedback type="invalid">
+                              {errors.amount}
+                            </Form.Control.Feedback>
+                          </div>
+                        </Col>
+
+                        <Col md={6}>
+                          <div className="form-floating mb-3">
+                            <Form.Select
+                              id="otherPaymentMode"
+                              value={collectionData.payment_mode}
+                              onChange={(e) => setCollectionData({ ...collectionData, payment_mode: e.target.value })}
+                            >
+                              <option value="cash">Cash</option>
+                              <option value="upi">UPI</option>
+                              <option value="bank_transfer">Bank Transfer</option>
+                              <option value="cheque">Cheque</option>
+                              <option value="card">Card</option>
+                            </Form.Select>
+                            <Form.Label htmlFor="otherPaymentMode">
+                              <i className="bi bi-credit-card me-2"></i>Payment Mode *
+                            </Form.Label>
+                          </div>
+                        </Col>
+
+                        <Col md={12}>
+                          <div className="form-floating mb-3">
+                            <Form.Control
+                              id="otherPaymentReference"
+                              type="text"
+                              placeholder="Reference Number"
+                              value={collectionData.reference_number}
+                              onChange={(e) => setCollectionData({ ...collectionData, reference_number: e.target.value })}
+                            />
+                            <Form.Label htmlFor="otherPaymentReference">
+                              <i className="bi bi-hash me-2"></i>Reference Number
+                            </Form.Label>
+                          </div>
+                        </Col>
+                      </Row>
+                    </Card.Body>
+                  </Card>
+                )}
+              </Tab>
+            </Tabs>
             </Modal.Body>
 
             <Modal.Footer className="bg-light border-0 p-4">
@@ -1717,7 +1711,14 @@ const FeeCollectionManagement = () => {
               <Button 
                 type="submit" 
                 variant="success"
-                disabled={collectFeeMutation.isLoading || (!selectedAssignment && !isDirectPayment && selectedOptionalFees.length === 0) || (isDirectPayment && (!directPaymentData.category_id || !directPaymentData.amount || !collectionData.amount))}
+                disabled={
+                  collectFeeMutation.isLoading || 
+                  !selectedStudent ||
+                  (isDirectPayment 
+                    ? (!directPaymentData.category_id || !collectionData.remarks || !collectionData.amount)
+                    : (!selectedAssignment && selectedOptionalFees.length === 0)
+                  )
+                }
               >
                 {collectFeeMutation.isLoading ? (
                   <>
@@ -1733,7 +1734,7 @@ const FeeCollectionManagement = () => {
               </Button>
             </Modal.Footer>
           </Form>
-        </div>
+        </Modal>
 
         <style jsx>{`
           .bg-gradient-collection {
@@ -1752,6 +1753,15 @@ const FeeCollectionManagement = () => {
           .max-height-200 {
             max-height: 200px;
           }
+          .max-height-300 {
+            max-height: 300px;
+          }
+          .border-left-primary {
+            border-left: 4px solid #0d6efd !important;
+          }
+          .border-left-success {
+            border-left: 4px solid #198754 !important;
+          }
           .hover-bg-light:hover {
             background-color: #f8f9fa;
           }
@@ -1765,8 +1775,34 @@ const FeeCollectionManagement = () => {
             border-color: #20c997;
             box-shadow: 0 0 0 0.25rem rgba(32, 201, 151, 0.15);
           }
+          
+          /* Custom Tab Styling */
+          .nav-tabs-custom {
+            border-bottom: 2px solid #e9ecef;
+          }
+          .nav-tabs-custom .nav-link {
+            color: #6c757d;
+            border: none;
+            border-bottom: 3px solid transparent;
+            padding: 12px 24px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+          }
+          .nav-tabs-custom .nav-link:hover {
+            color: #20c997;
+            border-bottom-color: rgba(32, 201, 151, 0.3);
+            background-color: rgba(32, 201, 151, 0.05);
+          }
+          .nav-tabs-custom .nav-link.active {
+            color: #20c997;
+            border-bottom-color: #20c997;
+            background-color: rgba(32, 201, 151, 0.1);
+            font-weight: 600;
+          }
+          .nav-tabs-custom .nav-link i {
+            font-size: 1.1rem;
+          }
         `}</style>
-      </Modal>
 
       {/* Receipt Modal */}
       <ReceiptModal
