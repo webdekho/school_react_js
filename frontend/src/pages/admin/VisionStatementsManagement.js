@@ -65,7 +65,7 @@ const VisionStatementsManagement = () => {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   // Fetch grades for dropdown
-  const { data: grades = [] } = useQuery({
+  const { data: gradesData } = useQuery({
     queryKey: ['grades_dropdown'],
     queryFn: async () => {
       const response = await apiService.get('/api/admin/grades_dropdown');
@@ -76,7 +76,7 @@ const VisionStatementsManagement = () => {
   });
 
   // Fetch staff for dropdown
-  const { data: staffList = [] } = useQuery({
+  const { data: staffData } = useQuery({
     queryKey: ['staff_dropdown'],
     queryFn: async () => {
       const response = await apiService.get('/api/admin/staff_dropdown');
@@ -85,6 +85,32 @@ const VisionStatementsManagement = () => {
              Array.isArray(response) ? response : [];
     }
   });
+
+  const grades = React.useMemo(() => {
+    if (Array.isArray(gradesData)) {
+      return gradesData;
+    }
+    if (Array.isArray(gradesData?.data)) {
+      return gradesData.data;
+    }
+    if (Array.isArray(gradesData?.data?.data)) {
+      return gradesData.data.data;
+    }
+    return [];
+  }, [gradesData]);
+
+  const staffList = React.useMemo(() => {
+    if (Array.isArray(staffData)) {
+      return staffData;
+    }
+    if (Array.isArray(staffData?.data)) {
+      return staffData.data;
+    }
+    if (Array.isArray(staffData?.data?.data)) {
+      return staffData.data.data;
+    }
+    return [];
+  }, [staffData]);
 
   // Create mutation
   const createMutation = useMutation({

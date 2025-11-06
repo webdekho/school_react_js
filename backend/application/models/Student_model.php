@@ -1,6 +1,7 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+
 class Student_model extends CI_Model {
     
     public function __construct() {
@@ -11,6 +12,7 @@ class Student_model extends CI_Model {
     public function get_students($filters = []) {
         // Use raw SQL to avoid ActiveRecord conflicts
         $sql = "SELECT students.*, 
+                       students.special_need AS special_need,
                        grades.name as grade_name, 
                        divisions.name as division_name, 
                        parents.name as parent_name, 
@@ -68,6 +70,13 @@ class Student_model extends CI_Model {
         
         // Add fee calculations for each student
         foreach ($students as &$student) {
+            if (array_key_exists('special need', $student)) {
+                $student['special_need'] = $student['special_need'] ?? $student['special need'];
+                unset($student['special need']);
+            }
+            if (!array_key_exists('special need', $student) && array_key_exists('special_need', $student)) {
+                $student['special need'] = $student['special_need'];
+            }
             // Decrypt sensitive data for display (masked)
             if ($student['aadhaar_encrypted']) {
                 $student['aadhaar_masked'] = $this->mask_aadhaar($this->decrypt_sensitive_data($student['aadhaar_encrypted']));
@@ -104,7 +113,7 @@ class Student_model extends CI_Model {
     }
     
     public function get_student_by_id($id) {
-        $this->db->select('students.*, grades.name as grade_name, divisions.name as division_name, parents.name as parent_name, parents.mobile as parent_mobile, parents.email as parent_email');
+        $this->db->select('students.*, students.special_need as special_need, grades.name as grade_name, divisions.name as division_name, parents.name as parent_name, parents.mobile as parent_mobile, parents.email as parent_email');
         $this->db->from('students');
         $this->db->join('grades', 'students.grade_id = grades.id');
         $this->db->join('divisions', 'students.division_id = divisions.id');
@@ -115,9 +124,19 @@ class Student_model extends CI_Model {
         $query = $this->db->get();
         $student = $query->row_array();
         
-        if ($student && $student['aadhaar_encrypted']) {
+        if ($student) {
+            if (array_key_exists('special need', $student)) {
+                $student['special_need'] = $student['special_need'] ?? $student['special need'];
+                unset($student['special need']);
+            }
+            if (!array_key_exists('special need', $student) && array_key_exists('special_need', $student)) {
+                $student['special need'] = $student['special_need'];
+            }
+
+            if ($student['aadhaar_encrypted']) {
             $student['aadhaar_masked'] = $this->mask_aadhaar($this->decrypt_sensitive_data($student['aadhaar_encrypted']));
             unset($student['aadhaar_encrypted']);
+            }
         }
         
         return $student;
@@ -139,7 +158,34 @@ class Student_model extends CI_Model {
         if (!isset($data['is_active'])) {
             $data['is_active'] = 1;
         }
-        
+
+        // Normalize emergency contact fields
+        if (!array_key_exists('emergency_contact_name', $data)) {
+            $data['emergency_contact_name'] = null;
+        }
+        if (!array_key_exists('emergency_contact_relationship', $data)) {
+            $data['emergency_contact_relationship'] = null;
+        }
+
+        // Normalize special need field and handle column with space safely
+        $special_need_is_set = false;
+        $special_need_value = null;
+        if (array_key_exists('special need', $data)) {
+            $special_need_value = trim($data['special need']) !== '' ? $data['special need'] : null;
+            unset($data['special need']);
+            $special_need_is_set = true;
+        } elseif (array_key_exists('special_need', $data)) {
+            $special_need_value = trim($data['special_need']) !== '' ? $data['special_need'] : null;
+            unset($data['special_need']);
+            $special_need_is_set = true;
+        }
+
+        if ($special_need_is_set) {
+            $data['special_need'] = $special_need_value;
+        } elseif (!array_key_exists('special_need', $data)) {
+            $data['special_need'] = null;
+        }
+ 
         // If academic_year_id is not provided, use current academic year
         if (empty($data['academic_year_id'])) {
             $this->load->model('Academic_year_model');
@@ -272,7 +318,31 @@ class Student_model extends CI_Model {
         
         // Check if grade or division is being updated
         $grade_or_division_changed = isset($data['grade_id']) || isset($data['division_id']);
-        
+ 
+        // Normalize emergency contact fields for updates
+        if (!array_key_exists('emergency_contact_name', $data)) {
+            $data['emergency_contact_name'] = null;
+        }
+        if (!array_key_exists('emergency_contact_relationship', $data)) {
+            $data['emergency_contact_relationship'] = null;
+        }
+
+        $special_need_is_set = false;
+        $special_need_value = null;
+        if (array_key_exists('special need', $data)) {
+            $special_need_value = trim($data['special need']) !== '' ? $data['special need'] : null;
+            unset($data['special need']);
+            $special_need_is_set = true;
+        } elseif (array_key_exists('special_need', $data)) {
+            $special_need_value = trim($data['special_need']) !== '' ? $data['special_need'] : null;
+            unset($data['special_need']);
+            $special_need_is_set = true;
+        }
+
+        if ($special_need_is_set) {
+            $data['special_need'] = $special_need_value;
+        }
+
         if ($grade_or_division_changed) {
             // Get current student data to check what changed
             $current_student = $this->get_student_by_id($id);
@@ -430,7 +500,7 @@ class Student_model extends CI_Model {
     }
     
     public function get_students_by_parent($parent_id) {
-        $this->db->select('students.*, grades.name as grade_name, divisions.name as division_name');
+        $this->db->select('students.*, students.special_need as special_need, grades.name as grade_name, divisions.name as division_name');
         $this->db->from('students');
         $this->db->join('grades', 'students.grade_id = grades.id');
         $this->db->join('divisions', 'students.division_id = divisions.id');
@@ -439,11 +509,24 @@ class Student_model extends CI_Model {
         $this->db->order_by('grades.name, divisions.name');
         
         $query = $this->db->get();
-        return $query->result_array();
+        $students = $query->result_array();
+
+        foreach ($students as &$student) {
+            if (array_key_exists('special need', $student)) {
+                $student['special_need'] = $student['special_need'] ?? $student['special need'];
+                unset($student['special need']);
+            }
+            if (!array_key_exists('special need', $student) && array_key_exists('special_need', $student)) {
+                $student['special need'] = $student['special_need'];
+            }
+        }
+
+        return $students;
     }
     
     public function get_students_by_staff_assignment($staff_id, $parent_id = null) {
         $sql = "SELECT DISTINCT students.*, 
+                       students.special_need AS special_need,
                        grades.name as grade_name, 
                        divisions.name as division_name, 
                        parents.name as parent_name, 
@@ -469,7 +552,19 @@ class Student_model extends CI_Model {
                   ORDER BY grades.name, divisions.name, students.student_name";
         
         $query = $this->db->query($sql, [$staff_id, $staff_id]);
-        return $query->result_array();
+        $students = $query->result_array();
+
+        foreach ($students as &$student) {
+            if (array_key_exists('special need', $student)) {
+                $student['special_need'] = $student['special_need'] ?? $student['special need'];
+                unset($student['special need']);
+            }
+            if (!array_key_exists('special need', $student) && array_key_exists('special_need', $student)) {
+                $student['special need'] = $student['special_need'];
+            }
+        }
+
+        return $students;
     }
     
     public function bulk_import_students($students_data) {

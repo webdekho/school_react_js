@@ -68,6 +68,21 @@ const ParentManagement = () => {
     address_proof: ''
   });
 
+  // Parent staff management state
+  const [parentStaff, setParentStaff] = useState([]);
+  const [showStaffModal, setShowStaffModal] = useState(false);
+  const [editingStaff, setEditingStaff] = useState(null);
+  const [editingStaffIndex, setEditingStaffIndex] = useState(null);
+  const [staffFormData, setStaffFormData] = useState({
+    name: '',
+    mobile_number: '',
+    tss_id: '',
+    photo: ''
+  });
+  const [staffErrors, setStaffErrors] = useState({});
+  const [staffPhotoPreview, setStaffPhotoPreview] = useState(null);
+  const [staffUploading, setStaffUploading] = useState(false);
+
   // Pagination and search states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -194,7 +209,7 @@ const ParentManagement = () => {
     }
   });
 
-  const handleShowModal = (parent = null) => {
+  const handleShowModal = async (parent = null) => {
     if (parent) {
       setEditingParent(parent);
       setFormData({
@@ -228,6 +243,21 @@ const ParentManagement = () => {
         id_proof: parent.id_proof ? getImageUrl(parent.id_proof) : null,
         address_proof: parent.address_proof ? getImageUrl(parent.address_proof) : null
       });
+      
+      // Fetch parent staff
+      try {
+        const staffResponse = await apiService.get(`/api/admin/parent_staff/${parent.id}`);
+        const contacts = (staffResponse.data || []).map(contact => ({
+          name: contact.name,
+          mobile_number: contact.mobile_number,
+          tss_id: contact.tss_id ?? null,
+          photo: contact.photo || null
+        }));
+        setParentStaff(contacts);
+      } catch (error) {
+        console.error('Error loading parent staff:', error);
+        setParentStaff([]);
+      }
     } else {
       setEditingParent(null);
       setFormData({
@@ -264,6 +294,7 @@ const ParentManagement = () => {
         id_proof: null,
         address_proof: null
       });
+      setParentStaff([]);
     }
     setErrors({});
     setShowModal(true);
@@ -307,6 +338,323 @@ const ParentManagement = () => {
       id_proof: null,
       address_proof: null
     });
+    setParentStaff([]);
+  };
+
+  // Parent staff management handlers
+  const handleShowStaffModal = (staff = null, index = null) => {
+    if (staff) {
+      setEditingStaff(staff);
+      setEditingStaffIndex(index);
+      setStaffFormData({
+        name: staff.name || '',
+        mobile_number: staff.mobile_number || '',
+        tss_id: staff.tss_id || '',
+        photo: staff.photo || ''
+      });
+      setStaffPhotoPreview(staff.photo ? getImageUrl(staff.photo) : null);
+    } else {
+      setEditingStaff(null);
+      setEditingStaffIndex(null);
+      setStaffFormData({
+        name: '',
+        mobile_number: '',
+        tss_id: '',
+        photo: ''
+      });
+      setStaffPhotoPreview(null);
+    }
+    setStaffErrors({});
+    setShowStaffModal(true);
+  };
+
+  const handleCloseStaffModal = () => {
+    setShowStaffModal(false);
+    setEditingStaff(null);
+    setEditingStaffIndex(null);
+    setStaffFormData({
+      name: '',
+      mobile_number: '',
+      tss_id: '',
+      photo: ''
+    });
+    setStaffErrors({});
+    setStaffPhotoPreview(null);
+    setStaffUploading(false);
+  };
+
+  const handleStaffInputChange = (e) => {
+    const { name, value } = e.target;
+    setStaffFormData(prev => ({ ...prev, [name]: value }));
+    if (staffErrors[name]) {
+      setStaffErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const validateStaffForm = () => {
+    const newErrors = {};
+    if (!staffFormData.name.trim()) {
+      newErrors.name = 'Staff name is required';
+    }
+    if (!staffFormData.mobile_number.trim()) {
+      newErrors.mobile_number = 'Mobile number is required';
+    } else if (!/^[0-9]{10}$/.test(staffFormData.mobile_number)) {
+      newErrors.mobile_number = 'Mobile number must be 10 digits';
+    }
+    setStaffErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleStaffSubmit = (e) => {
+    e.preventDefault();
+    if (!validateStaffForm()) return;
+
+    const staffData = {
+      name: staffFormData.name,
+      mobile_number: staffFormData.mobile_number,
+      tss_id: editingStaff?.tss_id ?? (staffFormData.tss_id || null),
+      photo: staffFormData.photo || null
+    };
+
+    if (editingStaffIndex !== null) {
+      // Update existing staff
+      const updatedStaff = [...parentStaff];
+      updatedStaff[editingStaffIndex] = { ...updatedStaff[editingStaffIndex], ...staffData };
+      setParentStaff(updatedStaff);
+      toast.success('Staff information updated');
+    } else {
+      // Add new staff
+      setParentStaff(prev => [...prev, staffData]);
+      toast.success('Staff added');
+    }
+
+    handleCloseStaffModal();
+  };
+
+  const handleStaffDelete = (index) => {
+    if (window.confirm('Are you sure you want to remove this staff member?')) {
+      setParentStaff(prev => prev.filter((_, i) => i !== index));
+      toast.success('Staff removed');
+    }
+  };
+
+  const handleStaffPhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Photo size must be less than 2MB');
+      return;
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+      toast.error('Invalid photo type. Allowed: JPG, PNG');
+      return;
+    }
+
+    setStaffUploading(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
+      uploadFormData.append('document_type', 'staff_photo');
+
+      const response = await apiService.uploadParentDocument(uploadFormData);
+      
+      // console.log(response);
+      const photoUrl = response.data?.url || response.url;
+
+      setStaffFormData(prev => ({ ...prev, photo: photoUrl }));
+      setStaffPhotoPreview(getImageUrl(photoUrl));
+      toast.success('Photo uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading staff photo:', error);
+      toast.error('Failed to upload photo');
+    } finally {
+      setStaffUploading(false);
+    }
+  };
+
+  const generateParentStaffIDCard = async (staff) => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: [54, 85.6]
+    });
+
+    const barcodeValue = staff.tss_id ? staff.tss_id.toString() : staff.mobile_number || 'PARENT_STAFF';
+
+    const img = new Image();
+    img.src = '/logo.png';
+
+    img.onload = async () => {
+      try {
+        doc.setFillColor(102, 126, 234);
+        doc.rect(0, 0, 85.6, 15, 'F');
+
+        doc.setFillColor(255, 255, 255);
+        doc.circle(9, 7.5, 5.5, 'F');
+        try {
+          doc.addImage(img, 'PNG', 5, 3.5, 8, 8);
+        } catch (error) {
+          console.error('Error adding logo:', error);
+        }
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('The Trivandrum Scottish School', 45, 6, { align: 'center' });
+
+        doc.setFontSize(4.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Thundathil, Kariyavattom, Trivandrum - 695581', 45, 9.5, { align: 'center' });
+
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('STAFF ID CARD (PARENT)', 45, 12.5, { align: 'center' });
+
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 15, 85.6, 34, 'F');
+
+        doc.setFillColor(102, 126, 234);
+        doc.rect(0, 15, 2.5, 34, 'F');
+
+        doc.setFillColor(250, 250, 250);
+        doc.rect(5, 18, 20, 26, 'F');
+        doc.setDrawColor(102, 126, 234);
+        doc.setLineWidth(0.4);
+        doc.rect(5, 18, 20, 26);
+        
+        // Load and add staff photo if available
+        if (staff.photo) {
+          try {
+            let imageDataUrl = null;
+            
+            // Use the serve_file endpoint which has CORS headers
+            try {
+              const imagePath = staff.photo.startsWith('/') ? staff.photo : `/${staff.photo}`;
+              const axiosResponse = await apiService.api.get(`/api/admin/serve_file?path=${encodeURIComponent(imagePath)}`, {
+                responseType: 'blob'
+              });
+              const blob = axiosResponse.data;
+              imageDataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch (serveError) {
+              console.warn('Serve file endpoint failed, trying direct path:', serveError);
+              // Fallback: try direct axios fetch
+              try {
+                const imagePath = staff.photo.startsWith('/') ? staff.photo.substring(1) : staff.photo;
+                const axiosResponse = await apiService.api.get(imagePath, {
+                  responseType: 'blob'
+                });
+                const blob = axiosResponse.data;
+                imageDataUrl = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch (axiosError) {
+                console.warn('Axios fetch also failed:', axiosError);
+              }
+            }
+            
+            if (imageDataUrl) {
+              try {
+                // Determine image format from filename or data URL
+                const isPNG = staff.photo.toLowerCase().includes('.png') ||
+                            imageDataUrl.substring(5, 15).toLowerCase().includes('png');
+                doc.addImage(imageDataUrl, isPNG ? 'PNG' : 'JPEG', 5.5, 18.5, 19, 25);
+              } catch (addImageError) {
+                console.error('Error adding staff photo to PDF:', addImageError);
+                doc.setFontSize(7);
+                doc.setTextColor(180, 180, 180);
+                doc.setFont('helvetica', 'normal');
+                doc.text('PHOTO', 15, 32, { align: 'center' });
+              }
+            } else {
+              // Failed to load image, show placeholder
+              doc.setFontSize(7);
+              doc.setTextColor(180, 180, 180);
+              doc.setFont('helvetica', 'normal');
+              doc.text('PHOTO', 15, 32, { align: 'center' });
+            }
+          } catch (error) {
+            console.error('Error loading staff photo:', error);
+            doc.setFontSize(7);
+            doc.setTextColor(180, 180, 180);
+            doc.setFont('helvetica', 'normal');
+            doc.text('PHOTO', 15, 32, { align: 'center' });
+          }
+        } else {
+          // No photo available, show placeholder
+          doc.setFontSize(7);
+          doc.setTextColor(180, 180, 180);
+          doc.setFont('helvetica', 'normal');
+          doc.text('PHOTO', 15, 32, { align: 'center' });
+        }
+
+        finalizeCard();
+
+        function finalizeCard() {
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(102, 126, 234);
+          doc.text('NAME', 28, 20);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(0, 0, 0);
+          const displayName = staff.name.length > 26 ? `${staff.name.substring(0, 26)}...` : staff.name;
+          doc.text(displayName, 28, 24);
+
+          doc.setFontSize(6);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(100, 100, 100);
+          doc.text('MOBILE', 28, 29);
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          doc.text(staff.mobile_number || 'N/A', 28, 32);
+
+          doc.setFontSize(6);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(100, 100, 100);
+          doc.text('TTSS ID', 28, 37);
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          doc.text(staff.tss_id ? staff.tss_id.toString() : 'Pending', 28, 40);
+
+          const barcodeCanvas = document.createElement('canvas');
+          JsBarcode(barcodeCanvas, barcodeValue, {
+            format: 'CODE128',
+            width: 2,
+            height: 40,
+            displayValue: true,
+            fontSize: 10,
+            margin: 5
+          });
+
+          const barcodeDataUrl = barcodeCanvas.toDataURL('image/png');
+          doc.addImage(barcodeDataUrl, 'PNG', 25, 47, 55, 7);
+
+          const fileName = `Parent_Staff_ID_${staff.name.replace(/\s+/g, '_')}_${barcodeValue}.pdf`;
+          doc.save(fileName);
+          toast.success('Parent staff ID Card generated successfully!');
+        }
+      } catch (error) {
+        console.error('Error generating staff ID card:', error);
+        toast.error('Failed to generate staff ID card');
+      }
+    };
+
+    img.onerror = () => {
+      toast.error('Failed to load school logo');
+    };
   };
 
   const handleInputChange = (e) => {
@@ -407,15 +755,23 @@ const ParentManagement = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
+
+    const staffContactsPayload = parentStaff.map(contact => ({
+      name: contact.name,
+      mobile_number: contact.mobile_number,
+      tss_id: contact.tss_id ?? null,
+      photo: contact.photo || null
+    }));
 
     const submitData = {
       ...formData,
       parent_photo: uploadedFiles.parent_photo || currentFileUrls.current.parent_photo || formData.parent_photo || '',
       id_proof: uploadedFiles.id_proof || currentFileUrls.current.id_proof || formData.id_proof || '',
-      address_proof: uploadedFiles.address_proof || currentFileUrls.current.address_proof || formData.address_proof || ''
+      address_proof: uploadedFiles.address_proof || currentFileUrls.current.address_proof || formData.address_proof || '',
+      staff_contacts: staffContactsPayload
     };
     
     if (editingParent && !submitData.password) {
@@ -500,33 +856,61 @@ const ParentManagement = () => {
         // Load and add parent photo if available
         if (parent.parent_photo) {
           try {
-            const parentPhoto = new Image();
-            parentPhoto.crossOrigin = 'anonymous';
-            parentPhoto.src = getImageUrl(parent.parent_photo);
+            let imageDataUrl = null;
             
-            // Wait for parent photo to load
-            await new Promise((resolve) => {
-              parentPhoto.onload = () => {
-                try {
-                  doc.addImage(parentPhoto, 'JPEG', 5.5, 18.5, 19, 25);
-                  resolve();
-                } catch (error) {
-                  console.error('Error adding parent photo:', error);
-                  doc.setFontSize(7);
-                  doc.setTextColor(180, 180, 180);
-                  doc.setFont('helvetica', 'normal');
-                  doc.text('PHOTO', 15, 32, { align: 'center' });
-                  resolve();
-                }
-              };
-              parentPhoto.onerror = () => {
+            // Use the serve_file endpoint which has CORS headers
+            try {
+              const imagePath = parent.parent_photo.startsWith('/') ? parent.parent_photo : `/${parent.parent_photo}`;
+              const axiosResponse = await apiService.api.get(`/api/admin/serve_file?path=${encodeURIComponent(imagePath)}`, {
+                responseType: 'blob'
+              });
+              const blob = axiosResponse.data;
+              imageDataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch (serveError) {
+              console.warn('Serve file endpoint failed, trying direct path:', serveError);
+              // Fallback: try direct axios fetch
+              try {
+                const imagePath = parent.parent_photo.startsWith('/') ? parent.parent_photo.substring(1) : parent.parent_photo;
+                const axiosResponse = await apiService.api.get(imagePath, {
+                  responseType: 'blob'
+                });
+                const blob = axiosResponse.data;
+                imageDataUrl = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch (axiosError) {
+                console.warn('Axios fetch also failed:', axiosError);
+              }
+            }
+            
+            if (imageDataUrl) {
+              try {
+                // Determine image format from filename or data URL
+                const isPNG = parent.parent_photo.toLowerCase().includes('.png') ||
+                            imageDataUrl.substring(5, 15).toLowerCase().includes('png');
+                doc.addImage(imageDataUrl, isPNG ? 'PNG' : 'JPEG', 5.5, 18.5, 19, 25);
+              } catch (addImageError) {
+                console.error('Error adding parent photo to PDF:', addImageError);
                 doc.setFontSize(7);
                 doc.setTextColor(180, 180, 180);
                 doc.setFont('helvetica', 'normal');
                 doc.text('PHOTO', 15, 32, { align: 'center' });
-                resolve();
-              };
-            });
+              }
+            } else {
+              // Failed to load image, show placeholder
+              doc.setFontSize(7);
+              doc.setTextColor(180, 180, 180);
+              doc.setFont('helvetica', 'normal');
+              doc.text('PHOTO', 15, 32, { align: 'center' });
+            }
           } catch (error) {
             console.error('Error loading parent photo:', error);
             doc.setFontSize(7);
@@ -1298,6 +1682,98 @@ const ParentManagement = () => {
                   )}
                 </div>
               </div>
+
+              {/* Parent Staff Information Section */}
+              <div className="row">
+                <div className="col-12 mb-3">
+                  <hr />
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h6 className="text-muted mb-0">
+                      <i className="bi bi-person-badge me-2"></i>Parent Staff Contacts
+                    </h6>
+                    <Button 
+                      variant="outline-primary" 
+                      size="sm"
+                      onClick={() => handleShowStaffModal()}
+                    >
+                      <i className="bi bi-plus-circle me-2"></i>Add Staff
+                    </Button>
+                  </div>
+                </div>
+
+                {parentStaff.length > 0 ? (
+                  <div className="col-12 mb-3">
+                    <Table size="sm" hover bordered>
+                      <thead className="table-light">
+                        <tr>
+                          <th style={{ width: '15%' }}>Photo</th>
+                          <th style={{ width: '30%' }}>Name</th>
+                          <th style={{ width: '20%' }}>Mobile Number</th>
+                          <th style={{ width: '15%' }}>TTSS ID</th>
+                          <th style={{ width: '20%' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parentStaff.map((staff, index) => (
+                          <tr key={index}>
+                            <td>
+                              {staff.photo ? (
+                                <img
+                                  src={getImageUrl(staff.photo)}
+                                  alt={`${staff.name} photo`}
+                                  className="rounded-circle border"
+                                  style={{ width: '48px', height: '48px', objectFit: 'cover' }}
+                                  onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                              ) : (
+                                <span className="text-muted">No photo</span>
+                              )}
+                            </td>
+                            <td>{staff.name}</td>
+                            <td>{staff.mobile_number}</td>
+                            <td>{staff.tss_id ? staff.tss_id : <span className="text-muted">Pending</span>}</td>
+                            <td>
+                              <div className="btn-group btn-group-sm">
+                                <Button
+                                  variant="outline-primary"
+                                  size="sm"
+                                  onClick={() => handleShowStaffModal(staff, index)}
+                                  title="Edit"
+                                >
+                                  <i className="bi bi-pencil"></i>
+                                </Button>
+                                <Button
+                                  variant="outline-danger"
+                                  size="sm"
+                                  onClick={() => handleStaffDelete(index)}
+                                  title="Delete"
+                                >
+                                  <i className="bi bi-trash"></i>
+                                </Button>
+                                <Button
+                                  variant="outline-success"
+                                  size="sm"
+                                  onClick={() => generateParentStaffIDCard(staff)}
+                                  title="Generate ID Card"
+                                >
+                                  <i className="bi bi-card-heading"></i>
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="col-12 mb-3">
+                    <Alert variant="secondary" className="text-center mb-0">
+                      <i className="bi bi-info-circle me-2"></i>
+                      No staff contacts added yet. Click "Add Staff" to add information.
+                    </Alert>
+                  </div>
+                )}
+              </div>
             </Modal.Body>
             <Modal.Footer className="bg-light border-0 p-4">
               <Button 
@@ -1371,6 +1847,125 @@ const ParentManagement = () => {
             100% { background-color: #fff3cd; }
           }
         `}</style>
+      </Modal>
+
+      {/* Add/Edit Parent Staff Modal */}
+      <Modal show={showStaffModal} onHide={handleCloseStaffModal} centered>
+        <Modal.Header closeButton className="bg-gradient-primary text-white" style={{ paddingTop: '1rem', paddingBottom: '1rem' }}>
+          <Modal.Title>
+            <i className="bi bi-person-plus me-2"></i>
+            {editingStaff ? 'Edit Staff Contact' : 'Add Staff Contact'}
+          </Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleStaffSubmit}>
+          <Modal.Body>
+            <Row>
+              <Col md={12} className="mb-3">
+                <label className="form-label text-muted">
+                  <i className="bi bi-image me-2"></i>Staff Photo
+                </label>
+                <Form.Control
+                  type="file"
+                  accept=".jpg,.jpeg,.png"
+                  onChange={handleStaffPhotoUpload}
+                  disabled={staffUploading}
+                />
+                <small className="text-muted d-block">Max 2MB, JPG/PNG only</small>
+                {staffPhotoPreview && (
+                  <div className="mt-3 d-flex align-items-center gap-3">
+                    <img
+                      src={staffPhotoPreview}
+                      alt="Staff preview"
+                      className="rounded border"
+                      style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <Button
+                      variant="outline-danger"
+                      size="sm"
+                      onClick={() => {
+                        setStaffFormData(prev => ({ ...prev, photo: '' }));
+                        setStaffPhotoPreview(null);
+                      }}
+                    >
+                      <i className="bi bi-trash me-1"></i>Remove Photo
+                    </Button>
+                  </div>
+                )}
+                {staffUploading && (
+                  <div className="mt-2">
+                    <Spinner size="sm" className="me-2" />
+                    <small>Uploading...</small>
+                  </div>
+                )}
+              </Col>
+
+              <Col md={12} className="mb-3">
+                <div className="form-floating">
+                  <Form.Control
+                    type="text"
+                    name="name"
+                    value={staffFormData.name}
+                    onChange={handleStaffInputChange}
+                    placeholder="Staff Name"
+                    isInvalid={!!staffErrors.name}
+                    id="staffName"
+                  />
+                  <label htmlFor="staffName">
+                    <i className="bi bi-person me-2"></i>Staff Name *
+                  </label>
+                  <Form.Control.Feedback type="invalid">
+                    {staffErrors.name}
+                  </Form.Control.Feedback>
+                </div>
+              </Col>
+
+              <Col md={6} className="mb-3">
+                <div className="form-floating">
+                  <Form.Control
+                    type="text"
+                    name="mobile_number"
+                    value={staffFormData.mobile_number}
+                    onChange={handleStaffInputChange}
+                    placeholder="Mobile Number"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                    isInvalid={!!staffErrors.mobile_number}
+                    id="staffMobile"
+                  />
+                  <label htmlFor="staffMobile">
+                    <i className="bi bi-phone me-2"></i>Mobile Number (10 digits) *
+                  </label>
+                  <Form.Control.Feedback type="invalid">
+                    {staffErrors.mobile_number}
+                  </Form.Control.Feedback>
+                </div>
+              </Col>
+
+              <Col md={6} className="mb-3">
+                <label className="form-label text-muted">
+                  <i className="bi bi-hash me-2"></i>TTSS ID
+                </label>
+                <div className="p-3 border rounded bg-light">
+                  {staffFormData.tss_id ? (
+                    <strong>{staffFormData.tss_id}</strong>
+                  ) : (
+                    <span className="text-muted">Will be generated automatically</span>
+                  )}
+                </div>
+              </Col>
+            </Row>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={handleCloseStaffModal}>
+              <i className="bi bi-x-circle me-2"></i>Cancel
+            </Button>
+            <Button type="submit" variant="primary">
+              <i className="bi bi-check-circle me-2"></i>
+              {editingStaff ? 'Update' : 'Add'} Staff
+            </Button>
+          </Modal.Footer>
+        </Form>
       </Modal>
     </div>
   );

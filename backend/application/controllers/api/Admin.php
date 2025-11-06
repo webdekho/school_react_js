@@ -25,6 +25,7 @@ class Admin extends API_Controller {
     public $Staff_attendance_model;
     public $Vision_statement_model;
     public $Staff_kids_model;
+    public $Parent_staff_model;
     public $Subject_model;
     public $Syllabus_model;
     
@@ -34,7 +35,7 @@ class Admin extends API_Controller {
     
     public function __construct() {
         parent::__construct();
-        $this->load->model(['Grade_model', 'Division_model', 'Student_model', 'Parent_model', 'Staff_model', 'Fee_model', 'Academic_year_model', 'Fee_category_model', 'Fee_structure_model', 'Fee_collection_model', 'Announcement_model', 'Complaint_model', 'Report_model', 'Role_model', 'Staff_wallet_model', 'Attendance_model', 'Staff_attendance_model', 'Vision_statement_model', 'Staff_kids_model', 'Subject_model', 'Syllabus_model']);
+        $this->load->model(['Grade_model', 'Division_model', 'Student_model', 'Parent_model', 'Staff_model', 'Fee_model', 'Academic_year_model', 'Fee_category_model', 'Fee_structure_model', 'Fee_collection_model', 'Announcement_model', 'Complaint_model', 'Report_model', 'Role_model', 'Staff_wallet_model', 'Attendance_model', 'Staff_attendance_model', 'Vision_statement_model', 'Staff_kids_model', 'Parent_staff_model', 'Subject_model', 'Syllabus_model']);
         
         // Skip authentication for public download endpoint
         if ($this->uri->segment(3) === 'public_download_attachment') {
@@ -736,7 +737,9 @@ class Admin extends API_Controller {
                     'student_photo_url' => 'max_length[255]',
                     'id_proof_url' => 'max_length[255]',
                     'address_proof_url' => 'max_length[255]',
-                    'student_aspirations' => 'max_length[2000]'
+                    'student_aspirations' => 'max_length[2000]',
+                    'aadhaar' => 'max_length[12]',
+                    'special_need' => 'max_length[500]'
                 ]);
                 
                 if (!$input) return;
@@ -797,9 +800,24 @@ class Admin extends API_Controller {
                     }
                 }
                 
+                if (array_key_exists('special_need', $input)) {
+                    $specialNeed = trim($input['special_need']) !== '' ? trim($input['special_need']) : null;
+                    $input['special need'] = $specialNeed;
+                    unset($input['special_need']);
+                }
+                
                 // Encrypt Aadhaar if provided
-                if (isset($input['aadhaar'])) {
-                    $input['aadhaar_encrypted'] = $this->encrypt_sensitive_data($input['aadhaar']);
+                if (array_key_exists('aadhaar', $input)) {
+                    $aadhaar = preg_replace('/\s+/', '', (string)$input['aadhaar']);
+                    if ($aadhaar === '') {
+                        $input['aadhaar_encrypted'] = null;
+                    } else {
+                        if (!preg_match('/^[0-9]{12}$/', $aadhaar)) {
+                            $this->send_error('Aadhaar number must be 12 digits', 400);
+                            return;
+                        }
+                        $input['aadhaar_encrypted'] = $this->encrypt_sensitive_data($aadhaar);
+                    }
                     unset($input['aadhaar']);
                 }
                 
@@ -881,7 +899,9 @@ class Admin extends API_Controller {
                     'student_photo_url' => 'max_length[255]',
                     'id_proof_url' => 'max_length[255]',
                     'address_proof_url' => 'max_length[255]',
-                    'student_aspirations' => 'max_length[2000]'
+                    'student_aspirations' => 'max_length[2000]',
+                    'aadhaar' => 'max_length[12]',
+                    'special_need' => 'max_length[500]'
                 ]);
                 
                 if (!$input) return;
@@ -902,9 +922,24 @@ class Admin extends API_Controller {
                     return;
                 }
                 
+                if (array_key_exists('special_need', $input)) {
+                    $specialNeed = trim($input['special_need']) !== '' ? trim($input['special_need']) : null;
+                    $input['special need'] = $specialNeed;
+                    unset($input['special_need']);
+                }
+                
                 // Encrypt Aadhaar if provided
-                if (isset($input['aadhaar'])) {
-                    $input['aadhaar_encrypted'] = $this->encrypt_sensitive_data($input['aadhaar']);
+                if (array_key_exists('aadhaar', $input)) {
+                    $aadhaar = preg_replace('/\s+/', '', (string)$input['aadhaar']);
+                    if ($aadhaar === '') {
+                        $input['aadhaar_encrypted'] = null;
+                    } else {
+                        if (!preg_match('/^[0-9]{12}$/', $aadhaar)) {
+                            $this->send_error('Aadhaar number must be 12 digits', 400);
+                            return;
+                        }
+                        $input['aadhaar_encrypted'] = $this->encrypt_sensitive_data($aadhaar);
+                    }
                     unset($input['aadhaar']);
                 }
                 
@@ -1086,7 +1121,7 @@ class Admin extends API_Controller {
 
         $document_type = $this->input->post('document_type');
 
-        $allowed_types = ['parent_photo', 'id_proof', 'address_proof'];
+        $allowed_types = ['parent_photo', 'id_proof', 'address_proof', 'staff_photo'];
         if (!in_array($document_type, $allowed_types)) {
             $this->send_error('Invalid document type. Must be one of: parent_photo, id_proof, address_proof', 400);
             return;
@@ -1107,6 +1142,7 @@ class Admin extends API_Controller {
 
         switch ($document_type) {
             case 'parent_photo':
+            case 'staff_photo':
                 $upload_config['allowed_types'] = 'gif|jpg|jpeg|png|GIF|JPG|JPEG|PNG';
                 break;
             case 'id_proof':
@@ -1143,6 +1179,52 @@ class Admin extends API_Controller {
             'file_size' => $upload_data['file_size'],
             'document_type' => $document_type
         ], 'Document uploaded successfully', 201);
+    }
+    
+    /**
+     * Serve uploaded file with CORS headers
+     * GET /api/admin/serve_file?path=/uploads/filename.jpg
+     */
+    public function serve_file() {
+        $file_path = $this->input->get('path');
+        
+        if (empty($file_path)) {
+            $this->send_error('File path is required', 400);
+            return;
+        }
+        
+        // Security: Only allow files from uploads directory
+        if (!preg_match('/^\/?uploads\//', $file_path)) {
+            $this->send_error('Invalid file path', 403);
+            return;
+        }
+        
+        // Remove leading slash if present
+        $file_path = ltrim($file_path, '/');
+        
+        // Full path to file
+        $full_path = FCPATH . $file_path;
+        
+        if (!file_exists($full_path) || !is_file($full_path)) {
+            $this->send_error('File not found', 404);
+            return;
+        }
+        
+        // Get file info
+        $mime_type = mime_content_type($full_path);
+        $file_size = filesize($full_path);
+        
+        // Set CORS headers
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, OPTIONS');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type');
+        header('Content-Type: ' . $mime_type);
+        header('Content-Length: ' . $file_size);
+        header('Cache-Control: public, max-age=31536000');
+        
+        // Output file
+        readfile($full_path);
+        exit;
     }
     
     /**
@@ -1213,7 +1295,7 @@ class Admin extends API_Controller {
         
         // Configure upload settings for staff photos
         $upload_config = [
-            'upload_path' => FCPATH . 'backend/uploads/',
+            'upload_path' => FCPATH . '/uploads/',
             'max_size' => 2048, // 2MB in KB
             'file_name' => 'staff_photo_' . uniqid() . '_' . time(),
             'allowed_types' => 'gif|jpg|jpeg|png|GIF|JPG|JPEG|PNG',
@@ -1609,6 +1691,7 @@ class Admin extends API_Controller {
                         $this->send_error('Parent not found', 404);
                         return;
                     }
+                    $parent['staff_contacts'] = $this->Parent_staff_model->get_staff_by_parent($id);
                     $this->send_response($parent);
                 } else {
                     $limit = $this->input->get('limit') ?: 10;
@@ -1616,6 +1699,9 @@ class Admin extends API_Controller {
                     $search = $this->input->get('search');
                     
                     $parents = $this->Parent_model->get_parents_paginated($limit, $offset, $search);
+                    foreach ($parents as &$parent) {
+                        $parent['staff_contact_count'] = $this->Parent_staff_model->count_staff_by_parent($parent['id']);
+                    }
                     $total = $this->Parent_model->count_parents($search);
                     
                     $this->send_response([
@@ -1630,6 +1716,9 @@ class Admin extends API_Controller {
                 break;
                 
             case 'post':
+                $raw_input = $this->get_input();
+                $staff_contacts = isset($raw_input['staff_contacts']) ? $raw_input['staff_contacts'] : [];
+
                 $input = $this->validate_input([
                     'name' => 'required|max_length[100]',
                     'mobile' => 'required|max_length[10]|min_length[10]',
@@ -1652,6 +1741,11 @@ class Admin extends API_Controller {
                 ]);
                 
                 if (!$input) return;
+
+                // Remove staff contacts from parent data (handled separately)
+                if (isset($input['staff_contacts'])) {
+                    unset($input['staff_contacts']);
+                }
                 
                 // Check if mobile already exists
                 $existing_parent = $this->Parent_model->get_parent_by_mobile($input['mobile']);
@@ -1663,6 +1757,17 @@ class Admin extends API_Controller {
                 $input['is_active'] = 1;
                 $parent_id = $this->Parent_model->create_parent($input);
                 if ($parent_id) {
+                    try {
+                        $normalized_contacts = $this->normalize_parent_staff_contacts($staff_contacts);
+                        if (!$this->Parent_staff_model->replace_staff_for_parent($parent_id, $normalized_contacts)) {
+                            throw new Exception('Failed to save parent staff contacts');
+                        }
+                    } catch (Exception $e) {
+                        log_message('error', 'Parent staff contacts save failed for parent ' . $parent_id . ': ' . $e->getMessage());
+                        $this->send_error('Parent created but failed to save staff contacts: ' . $e->getMessage(), 500);
+                        return;
+                    }
+                    $this->log_activity('parent_staff_updated', 'parent_staff', $parent_id, null, isset($normalized_contacts) ? $normalized_contacts : []);
                     $this->log_activity('parent_created', 'parents', $parent_id, null, $input);
                     $this->send_response(['id' => $parent_id], 'Parent created successfully', 201);
                 } else {
@@ -1675,6 +1780,10 @@ class Admin extends API_Controller {
                     $this->send_error('Parent ID required', 400);
                     return;
                 }
+                
+                $raw_input = $this->get_input();
+                $has_staff_contacts = array_key_exists('staff_contacts', $raw_input);
+                $staff_contacts = $has_staff_contacts ? $raw_input['staff_contacts'] : [];
                 
                 $input = $this->validate_input([
                     'name' => 'required|max_length[100]',
@@ -1698,6 +1807,11 @@ class Admin extends API_Controller {
                 ]);
                 
                 if (!$input) return;
+
+                // Ensure staff_contacts is not part of parent update payload
+                if (isset($input['staff_contacts'])) {
+                    unset($input['staff_contacts']);
+                }
                 
                 $old_parent = $this->Parent_model->get_parent_by_id($id);
                 if (!$old_parent) {
@@ -1717,6 +1831,19 @@ class Admin extends API_Controller {
                 }
                 
                 if ($this->Parent_model->update_parent($id, $input)) {
+                    if ($has_staff_contacts) {
+                        try {
+                            $normalized_contacts = $this->normalize_parent_staff_contacts($staff_contacts);
+                            if (!$this->Parent_staff_model->replace_staff_for_parent($id, $normalized_contacts)) {
+                                throw new Exception('Failed to save parent staff contacts');
+                            }
+                            $this->log_activity('parent_staff_updated', 'parent_staff', $id, null, $normalized_contacts);
+                        } catch (Exception $e) {
+                            log_message('error', 'Parent staff contacts save failed for parent ' . $id . ': ' . $e->getMessage());
+                            $this->send_error('Parent updated but failed to save staff contacts: ' . $e->getMessage(), 500);
+                            return;
+                        }
+                    }
                     $this->log_activity('parent_updated', 'parents', $id, $old_parent, $input);
                     $this->send_response(null, 'Parent updated successfully');
                 } else {
@@ -2094,6 +2221,104 @@ class Admin extends API_Controller {
         }
     }
 
+    /**
+     * Parent staff contacts management
+     * GET /api/admin/parent_staff/{parent_id}
+     * GET /api/admin/parent_staff/contact/{id}
+     */
+    public function parent_staff($parent_id = null, $action = null, $id = null) {
+        if (!$this->require_any_permission(['parents', 'parents.view', 'parents.create', 'parents.update', '*'])) {
+            return;
+        }
+
+        if ($this->input->method() === 'get') {
+            try {
+                if ($action === 'contact' && $id) {
+                    $contact = $this->Parent_staff_model->get_staff_by_id($id);
+                    if (!$contact) {
+                        $this->send_error('Parent staff contact not found', 404);
+                        return;
+                    }
+                    $this->send_response($contact);
+                    return;
+                }
+
+                if (!$parent_id) {
+                    $this->send_error('Parent ID required', 400);
+                    return;
+                }
+
+                $contacts = $this->Parent_staff_model->get_staff_by_parent($parent_id);
+                $this->send_response($contacts);
+            } catch (Exception $e) {
+                log_message('error', 'Get parent staff error: ' . $e->getMessage());
+                $this->send_error('Failed to retrieve parent staff contacts', 500);
+            }
+            return;
+        }
+
+        $this->send_error('Method not allowed', 405);
+    }
+
+    /**
+     * Bulk update parent staff contacts
+     * POST /api/admin/parent_staff_bulk/{parent_id}
+     */
+    public function parent_staff_bulk($parent_id) {
+        if ($this->input->method() !== 'post') {
+            $this->send_error('Method not allowed', 405);
+            return;
+        }
+
+        if (!$this->require_any_permission(['parents', 'parents.create', 'parents.update', '*'])) {
+            return;
+        }
+
+        if (!$parent_id) {
+            $this->send_error('Parent ID required', 400);
+            return;
+        }
+
+        try {
+            $input = $this->get_input();
+            $staff_data = isset($input['staff_contacts']) && is_array($input['staff_contacts']) ? $input['staff_contacts'] : [];
+
+            // Validate each staff record
+            foreach ($staff_data as $index => &$staff) {
+                if (empty($staff['name'])) {
+                    $this->send_error("Staff name is required at index $index", 400);
+                    return;
+                }
+
+                if (empty($staff['mobile_number'])) {
+                    $this->send_error("Mobile number is required at index $index", 400);
+                    return;
+                }
+
+                // Validate mobile number format (10 digits)
+                if (!preg_match('/^[0-9]{10}$/', $staff['mobile_number'])) {
+                    $this->send_error("Valid mobile number (10 digits) is required at index $index", 400);
+                    return;
+                }
+
+                $staff['tss_id'] = !empty($staff['tss_id']) ? (int)$staff['tss_id'] : null;
+                $staff['photo'] = isset($staff['photo']) && $staff['photo'] !== '' ? $staff['photo'] : null;
+            }
+            unset($staff);
+
+            if ($this->Parent_staff_model->update_staff_for_parent($parent_id, $staff_data)) {
+                $updated_staff = $this->Parent_staff_model->get_staff_by_parent($parent_id);
+                $this->log_activity('parent_staff_bulk_updated', 'parent_staff', $parent_id, null, $staff_data);
+                $this->send_response($updated_staff, 'Parent staff updated successfully');
+            } else {
+                $this->send_error('Failed to update parent staff', 500);
+            }
+        } catch (Exception $e) {
+            log_message('error', 'Bulk update parent staff error: ' . $e->getMessage());
+            $this->send_error('Failed to update parent staff', 500);
+        }
+    }
+    
     // Get divisions for dropdown (with grade names)
     public function divisions_dropdown() {
         if ($this->input->method() !== 'get') {
@@ -4561,6 +4786,254 @@ class Admin extends API_Controller {
         }
     }
 
+    // ==================== VISION STATEMENT MANAGEMENT ====================
+
+    public function vision_statements($id = null) {
+        $method = strtolower($this->input->method());
+
+        switch ($method) {
+            case 'get':
+                if (!$this->require_any_permission(['vision_statements', 'vision_statements.view', '*'])) {
+                    return;
+                }
+
+                try {
+                    if ($id) {
+                        $vision = $this->Vision_statement_model->get_vision_statement_by_id($id);
+                        if (!$vision) {
+                            $this->send_error('Vision statement not found', 404);
+                            return;
+                        }
+
+                        $this->send_response($vision);
+                        return;
+                    }
+
+                    $limit = (int) $this->input->get('limit');
+                    $offset = (int) $this->input->get('offset');
+
+                    if ($limit <= 0) {
+                        $limit = 10;
+                    }
+
+                    if ($offset < 0) {
+                        $offset = 0;
+                    }
+
+                    $filters = [];
+                    $grade_id = $this->input->get('grade_id');
+                    $staff_id = $this->input->get('staff_id');
+                    $search = $this->input->get('search');
+
+                    if ($grade_id !== null && $grade_id !== '') {
+                        $filters['grade_id'] = (int) $grade_id;
+                    }
+
+                    if ($staff_id !== null && $staff_id !== '') {
+                        $filters['staff_id'] = (int) $staff_id;
+                    }
+
+                    if ($search !== null && $search !== '') {
+                        $filters['search'] = $search;
+                    }
+
+                    $visions = $this->Vision_statement_model->get_vision_statements_paginated($limit, $offset, $filters);
+                    $total = $this->Vision_statement_model->count_vision_statements($filters);
+
+                    $this->send_response([
+                        'data' => $visions,
+                        'total' => $total,
+                        'limit' => $limit,
+                        'offset' => $offset,
+                        'has_next' => ($offset + $limit) < $total,
+                        'has_prev' => $offset > 0
+                    ]);
+                } catch (Exception $e) {
+                    log_message('error', 'Get vision statements error: ' . $e->getMessage());
+                    $this->send_error('Failed to retrieve vision statements', 500);
+                }
+                return;
+
+            case 'post':
+                if (!$this->require_any_permission(['vision_statements', 'vision_statements.create', '*'])) {
+                    return;
+                }
+
+                try {
+                    $input = $this->get_input();
+
+                    $this->load->library('form_validation');
+                    $this->form_validation->set_data($input);
+                    $this->form_validation->set_rules('staff_id', 'Staff Member', 'required|integer');
+                    $this->form_validation->set_rules('grade_id', 'Grade', 'integer');
+                    $this->form_validation->set_rules('vision', 'Vision Statement', 'required|max_length[5000]');
+
+                    if (!$this->form_validation->run()) {
+                        $this->send_error('Validation failed', 400, $this->form_validation->error_array());
+                        return;
+                    }
+
+                    $staff_id = (int) $input['staff_id'];
+                    $grade_id = isset($input['grade_id']) && $input['grade_id'] !== '' ? (int) $input['grade_id'] : 0;
+                    $vision_text = trim($input['vision']);
+
+                    $staff = $this->Staff_model->get_staff_by_id($staff_id);
+                    if (!$staff) {
+                        $this->send_error('Staff member not found', 404);
+                        return;
+                    }
+
+                    if ($grade_id > 0) {
+                        $grade = $this->Grade_model->get_grade_by_id($grade_id);
+                        if (!$grade) {
+                            $this->send_error('Grade not found', 404);
+                            return;
+                        }
+                    }
+
+                    $payload = [
+                        'staff_id' => $staff_id,
+                        'grade_id' => $grade_id,
+                        'vision' => $vision_text
+                    ];
+
+                    $vision_id = $this->Vision_statement_model->create_vision_statement($payload);
+
+                    if ($vision_id) {
+                        $vision = $this->Vision_statement_model->get_vision_statement_by_id($vision_id);
+                        $this->log_activity('vision_statement_created', 'vision_statements', $vision_id, null, $payload);
+                        $this->send_response($vision, 'Vision statement created successfully', 201);
+                    } else {
+                        $this->send_error('Failed to create vision statement', 500);
+                    }
+                } catch (Exception $e) {
+                    log_message('error', 'Create vision statement error: ' . $e->getMessage());
+                    $this->send_error('Failed to create vision statement', 500);
+                }
+                return;
+
+            case 'put':
+                if (!$this->require_any_permission(['vision_statements', 'vision_statements.update', '*'])) {
+                    return;
+                }
+
+                if (!$id) {
+                    $this->send_error('Vision statement ID required', 400);
+                    return;
+                }
+
+                try {
+                    $existing = $this->Vision_statement_model->get_vision_statement_by_id($id);
+                    if (!$existing) {
+                        $this->send_error('Vision statement not found', 404);
+                        return;
+                    }
+
+                    $input = $this->get_input();
+
+                    if (empty($input)) {
+                        $this->send_error('No data provided for update', 400);
+                        return;
+                    }
+
+                    $this->load->library('form_validation');
+                    $this->form_validation->set_data($input);
+                    $this->form_validation->set_rules('staff_id', 'Staff Member', 'integer');
+                    $this->form_validation->set_rules('grade_id', 'Grade', 'integer');
+                    $this->form_validation->set_rules('vision', 'Vision Statement', 'max_length[5000]');
+
+                    if (!$this->form_validation->run()) {
+                        $this->send_error('Validation failed', 400, $this->form_validation->error_array());
+                        return;
+                    }
+
+                    $update_data = [];
+
+                    if (array_key_exists('staff_id', $input)) {
+                        $staff_id = $input['staff_id'] !== '' ? (int) $input['staff_id'] : null;
+                        if ($staff_id === null) {
+                            $this->send_error('Staff member is required', 400);
+                            return;
+                        }
+
+                        $staff = $this->Staff_model->get_staff_by_id($staff_id);
+                        if (!$staff) {
+                            $this->send_error('Staff member not found', 404);
+                            return;
+                        }
+
+                        $update_data['staff_id'] = $staff_id;
+                    }
+
+                    if (array_key_exists('grade_id', $input)) {
+                        $grade_id = $input['grade_id'] !== '' ? (int) $input['grade_id'] : 0;
+                        if ($grade_id > 0) {
+                            $grade = $this->Grade_model->get_grade_by_id($grade_id);
+                            if (!$grade) {
+                                $this->send_error('Grade not found', 404);
+                                return;
+                            }
+                        }
+
+                        $update_data['grade_id'] = $grade_id;
+                    }
+
+                    if (array_key_exists('vision', $input)) {
+                        $update_data['vision'] = trim($input['vision']);
+                    }
+
+                    if (empty($update_data)) {
+                        $this->send_error('No changes detected', 400);
+                        return;
+                    }
+
+                    if ($this->Vision_statement_model->update_vision_statement($id, $update_data)) {
+                        $updated = $this->Vision_statement_model->get_vision_statement_by_id($id);
+                        $this->log_activity('vision_statement_updated', 'vision_statements', $id, $existing, $update_data);
+                        $this->send_response($updated, 'Vision statement updated successfully');
+                    } else {
+                        $this->send_error('Failed to update vision statement', 500);
+                    }
+                } catch (Exception $e) {
+                    log_message('error', 'Update vision statement error: ' . $e->getMessage());
+                    $this->send_error('Failed to update vision statement', 500);
+                }
+                return;
+
+            case 'delete':
+                if (!$this->require_any_permission(['vision_statements', 'vision_statements.delete', '*'])) {
+                    return;
+                }
+
+                if (!$id) {
+                    $this->send_error('Vision statement ID required', 400);
+                    return;
+                }
+
+                try {
+                    $existing = $this->Vision_statement_model->get_vision_statement_by_id($id);
+                    if (!$existing) {
+                        $this->send_error('Vision statement not found', 404);
+                        return;
+                    }
+
+                    if ($this->Vision_statement_model->delete_vision_statement($id)) {
+                        $this->log_activity('vision_statement_deleted', 'vision_statements', $id, $existing, null);
+                        $this->send_response(null, 'Vision statement deleted successfully');
+                    } else {
+                        $this->send_error('Failed to delete vision statement', 500);
+                    }
+                } catch (Exception $e) {
+                    log_message('error', 'Delete vision statement error: ' . $e->getMessage());
+                    $this->send_error('Failed to delete vision statement', 500);
+                }
+                return;
+
+            default:
+                $this->send_error('Method not allowed', 405);
+        }
+    }
+
     // ==================== STAFF WALLET MANAGEMENT METHODS ====================
     
     /**
@@ -5909,7 +6382,7 @@ class Admin extends API_Controller {
 
         try {
             // Check permission
-            if (!$this->require_any_permission(['staff', 'staff.view', 'attendance', 'attendance.view', '*'])) {
+            if (!$this->require_any_permission(['staff_attendance', 'staff_attendance.view', 'staff', 'staff.view', 'attendance', 'attendance.view', '*'])) {
                 return;
             }
 
@@ -5964,7 +6437,7 @@ class Admin extends API_Controller {
 
         try {
             // Check permission
-            if (!$this->require_any_permission(['staff', 'staff.update', 'attendance', 'attendance.create', 'attendance.update', '*'])) {
+            if (!$this->require_any_permission(['staff_attendance', 'staff_attendance.create', 'staff_attendance.update', 'staff', 'staff.update', 'attendance', 'attendance.create', 'attendance.update', '*'])) {
                 return;
             }
 
@@ -6046,7 +6519,7 @@ class Admin extends API_Controller {
 
         try {
             // Check permission
-            if (!$this->require_any_permission(['staff', 'staff.view', 'attendance', 'attendance.view', '*'])) {
+            if (!$this->require_any_permission(['staff_attendance', 'staff_attendance.view', 'staff', 'staff.view', 'attendance', 'attendance.view', '*'])) {
                 return;
             }
 
@@ -6094,7 +6567,7 @@ class Admin extends API_Controller {
 
         try {
             // Check permission
-            if (!$this->require_any_permission(['staff', 'staff.view', 'attendance', 'attendance.view', 'reports', '*'])) {
+            if (!$this->require_any_permission(['staff_attendance', 'staff_attendance.view', 'staff', 'staff.view', 'attendance', 'attendance.view', 'reports', '*'])) {
                 return;
             }
 
@@ -6123,7 +6596,7 @@ class Admin extends API_Controller {
 
         try {
             // Check permission
-            if (!$this->require_any_permission(['staff', 'staff.delete', 'attendance', 'attendance.delete', '*'])) {
+            if (!$this->require_any_permission(['staff_attendance', 'staff_attendance.delete', 'staff', 'staff.delete', 'attendance', 'attendance.delete', '*'])) {
                 return;
             }
 
@@ -6166,9 +6639,61 @@ class Admin extends API_Controller {
             }
 
             return $age;
-        } catch (Exception $e) {
+            } catch (Exception $e) {
             return null;
         }
+    }
+
+    private function normalize_parent_staff_contacts($contacts)
+    {
+        if ($contacts === null) {
+            return [];
+        }
+
+        if (!is_array($contacts)) {
+            throw new Exception('Parent staff contacts must be provided as an array');
+        }
+
+        $normalized = [];
+
+        foreach ($contacts as $index => $contact) {
+            if (!is_array($contact)) {
+                throw new Exception("Invalid staff contact payload at index {$index}");
+            }
+
+            $name = isset($contact['name']) ? trim($contact['name']) : '';
+            $mobile = isset($contact['mobile_number']) ? preg_replace('/\s+/', '', $contact['mobile_number']) : '';
+            $tssId = isset($contact['tss_id']) && $contact['tss_id'] !== '' ? $contact['tss_id'] : null;
+
+            if ($name === '') {
+                throw new Exception("Staff contact name is required at index {$index}");
+            }
+
+            if (strlen($name) > 100) {
+                throw new Exception("Staff contact name exceeds maximum length at index {$index}");
+            }
+
+            if ($mobile === '') {
+                throw new Exception("Staff contact mobile number is required at index {$index}");
+            }
+
+            if (!preg_match('/^\+?[0-9]{6,15}$/', $mobile)) {
+                throw new Exception("Invalid mobile number for staff contact at index {$index}");
+            }
+
+            if ($tssId !== null && !is_numeric($tssId)) {
+                throw new Exception("Invalid TSS ID for staff contact at index {$index}");
+            }
+
+            $normalized[] = [
+                'name' => $name,
+                'mobile_number' => $mobile,
+                'tss_id' => $tssId !== null ? (int)$tssId : null,
+                'photo' => isset($contact['photo']) && $contact['photo'] !== '' ? $contact['photo'] : null
+            ];
+        }
+
+        return $normalized;
     }
 
     // ==================== SUBJECT MANAGEMENT ====================

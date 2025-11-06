@@ -129,6 +129,7 @@ const StudentManagement = () => {
     grade_id: '',
     division_id: '',
     roll_number: '',
+    aadhaar: '',
     residential_address: '',
     pincode: '',
     sam_samagrah_id: '',
@@ -148,6 +149,7 @@ const StudentManagement = () => {
     lifestyle_diseases: '',
     asthmatic: false,
     phobia: false,
+    special_need: '',
     // Family Doctor
     doctor_name: '',
     doctor_contact: '',
@@ -172,6 +174,7 @@ const StudentManagement = () => {
     id_proof: null,
     address_proof: null
   });
+  const [existingAadhaarMasked, setExistingAadhaarMasked] = useState('');
   
   // Global storage for uploaded file URLs that persists across renders
   const [uploadedFiles, setUploadedFiles] = useState({
@@ -544,6 +547,7 @@ const StudentManagement = () => {
         grade_id: student.grade_id ? student.grade_id.toString() : '',
         division_id: student.division_id ? student.division_id.toString() : '',
         roll_number: student.roll_number,
+        aadhaar: '',
         residential_address: student.residential_address || '',
         pincode: student.pincode || '',
         sam_samagrah_id: student.sam_samagrah_id || '',
@@ -563,6 +567,7 @@ const StudentManagement = () => {
         lifestyle_diseases: student.lifestyle_diseases || '',
         asthmatic: student.asthmatic === 1 || student.asthmatic === '1',
         phobia: student.phobia === 1 || student.phobia === '1',
+        special_need: student['special need'] || '',
         // Family Doctor
         doctor_name: student.doctor_name || '',
         doctor_contact: student.doctor_contact || '',
@@ -576,6 +581,7 @@ const StudentManagement = () => {
         // Student Aspirations
         student_aspirations: student.student_aspirations || ''
       });
+      setExistingAadhaarMasked(student.aadhaar_masked || '');
       
       // Sync all file URL storage with existing student data
       const existingUrls = {
@@ -601,6 +607,7 @@ const StudentManagement = () => {
         grade_id: selectedGrade || '',
         division_id: selectedDivision || '',
         roll_number: '',
+        aadhaar: '',
         residential_address: '',
         pincode: '',
         sam_samagrah_id: '',
@@ -620,6 +627,7 @@ const StudentManagement = () => {
         lifestyle_diseases: '',
         asthmatic: false,
         phobia: false,
+        special_need: '',
         // Family Doctor
         doctor_name: '',
         doctor_contact: '',
@@ -633,6 +641,7 @@ const StudentManagement = () => {
         // Student Aspirations
         student_aspirations: ''
       });
+      setExistingAadhaarMasked('');
       
       // Reset all file URL storage for new student
       const emptyUrls = {
@@ -663,6 +672,7 @@ const StudentManagement = () => {
       grade_id: '',
       division_id: '',
       roll_number: '',
+      aadhaar: '',
       residential_address: '',
       pincode: '',
       sam_samagrah_id: '',
@@ -679,6 +689,7 @@ const StudentManagement = () => {
       lifestyle_diseases: '',
       asthmatic: false,
       phobia: false,
+      special_need: '',
       doctor_name: '',
       doctor_contact: '',
       clinic_address: '',
@@ -688,6 +699,7 @@ const StudentManagement = () => {
       address_proof_url: '',
       student_aspirations: ''
     });
+    setExistingAadhaarMasked('');
     setErrors({});
     setSemesterFees(null);
     setShowSemesterFees(false);
@@ -700,7 +712,8 @@ const StudentManagement = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const updatedValue = name === 'aadhaar' ? value.replace(/[^0-9]/g, '') : value;
+    setFormData(prev => ({ ...prev, [name]: updatedValue }));
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -736,6 +749,9 @@ const StudentManagement = () => {
     }
     if (!formData.parent_id) {
       newErrors.parent_id = 'Parent ID is required';
+    }
+    if (formData.aadhaar && !/^[0-9]{12}$/.test(formData.aadhaar)) {
+      newErrors.aadhaar = 'Aadhaar number must be 12 digits';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -774,6 +790,8 @@ const StudentManagement = () => {
       academic_year_id: getAcademicYearId(),
       // Emergency Contact
       emergency_contact_number: formData.emergency_contact_number,
+      emergency_contact_name: formData.emergency_contact_name,
+      emergency_contact_relationship: formData.emergency_contact_relationship,
       gender: formData.gender,
       // Travel Mode
       travel_mode: formData.travel_mode,
@@ -794,8 +812,13 @@ const StudentManagement = () => {
       id_proof_url: uploadedFiles.id_proof_url || currentFileUrls.current.id_proof_url || formData.id_proof_url || '',
       address_proof_url: uploadedFiles.address_proof_url || currentFileUrls.current.address_proof_url || formData.address_proof_url || '',
       // Student Aspirations
-      student_aspirations: formData.student_aspirations
+      student_aspirations: formData.student_aspirations,
+      special_need: formData.special_need
     };
+
+    if (formData.aadhaar && formData.aadhaar.trim() !== '') {
+      submitData.aadhaar = formData.aadhaar.trim();
+    }
 
     console.log('=== COMPREHENSIVE FORM SUBMISSION DEBUG ===');
     console.log('1. FormData state:', {
@@ -1178,40 +1201,63 @@ const StudentManagement = () => {
         // Load and add student photo if available
         if (student.student_photo_url) {
           try {
-            const studentPhoto = new Image();
-            studentPhoto.crossOrigin = 'anonymous';
-            studentPhoto.src = getImageUrl(student.student_photo_url);
+            let imageDataUrl = null;
             
-            // Wait for student photo to load
-            await new Promise((resolve, reject) => {
-              studentPhoto.onload = () => {
-                try {
-                  // Add student photo fitted to the frame
-                  doc.addImage(studentPhoto, 'JPEG', 5.5, 18.5, 19, 25);
-                  resolve();
-                } catch (error) {
-                  console.error('Error adding student photo:', error);
-                  // Fallback to placeholder text
-                  doc.setFontSize(7);
-                  doc.setTextColor(180, 180, 180);
-                  doc.setFont('helvetica', 'normal');
-                  doc.text('PHOTO', 15, 32, { align: 'center' });
-                  resolve();
-                }
-              };
-              studentPhoto.onerror = () => {
-                console.error('Failed to load student photo');
-                // Fallback to placeholder text
+            // Use the serve_file endpoint which has CORS headers
+            try {
+              const imagePath = student.student_photo_url.startsWith('/') ? student.student_photo_url : `/${student.student_photo_url}`;
+              const axiosResponse = await apiService.api.get(`/api/admin/serve_file?path=${encodeURIComponent(imagePath)}`, {
+                responseType: 'blob'
+              });
+              const blob = axiosResponse.data;
+              imageDataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch (serveError) {
+              console.warn('Serve file endpoint failed, trying direct path:', serveError);
+              // Fallback: try direct axios fetch
+              try {
+                const imagePath = student.student_photo_url.startsWith('/') ? student.student_photo_url.substring(1) : student.student_photo_url;
+                const axiosResponse = await apiService.api.get(imagePath, {
+                  responseType: 'blob'
+                });
+                const blob = axiosResponse.data;
+                imageDataUrl = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch (axiosError) {
+                console.warn('Axios fetch also failed:', axiosError);
+              }
+            }
+            
+            if (imageDataUrl) {
+              try {
+                // Determine image format from filename or data URL
+                const isPNG = student.student_photo_url.toLowerCase().includes('.png') ||
+                            imageDataUrl.substring(5, 15).toLowerCase().includes('png');
+                doc.addImage(imageDataUrl, isPNG ? 'PNG' : 'JPEG', 5.5, 18.5, 19, 25);
+              } catch (addImageError) {
+                console.error('Error adding student photo to PDF:', addImageError);
                 doc.setFontSize(7);
                 doc.setTextColor(180, 180, 180);
                 doc.setFont('helvetica', 'normal');
                 doc.text('PHOTO', 15, 32, { align: 'center' });
-                resolve();
-              };
-            });
+              }
+            } else {
+              // Failed to load image, show placeholder
+              doc.setFontSize(7);
+              doc.setTextColor(180, 180, 180);
+              doc.setFont('helvetica', 'normal');
+              doc.text('PHOTO', 15, 32, { align: 'center' });
+            }
           } catch (error) {
             console.error('Error loading student photo:', error);
-            // Fallback to placeholder text
             doc.setFontSize(7);
             doc.setTextColor(180, 180, 180);
             doc.setFont('helvetica', 'normal');
@@ -1800,6 +1846,18 @@ const StudentManagement = () => {
                           Sam ID: {student.sam_samagrah_id}
                         </small>
                       )}
+                      {student.aadhaar_masked && (
+                        <div className="text-muted" style={{ fontSize: '0.8rem' }}>
+                          <i className="bi bi-credit-card-2-front me-1"></i>
+                          Aadhaar: {student.aadhaar_masked}
+                        </div>
+                      )}
+                      {student['special need'] && (
+                        <div className="text-muted" style={{ fontSize: '0.8rem' }}>
+                          <i className="bi bi-universal-access me-1"></i>
+                          Special Need: {student['special need']}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <Badge bg="info" className="me-1">{student.grade_name}</Badge>
@@ -1933,25 +1991,24 @@ const StudentManagement = () => {
               
               <div className="row mb-4">
                 <div className="col-md-6 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="studentName">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-person me-2"></i>Student Full Name *
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="student_name"
                       value={formData.student_name}
                       onChange={handleInputChange}
-                      placeholder="Student Name"
+                      placeholder="Enter student full name"
                       isInvalid={!!errors.student_name}
                       maxLength={100}
                       className="form-control-lg"
-                      id="studentName"
                     />
-                    <label htmlFor="studentName" className="text-muted">
-                      <i className="bi bi-person me-2"></i>Student Full Name *
-                    </label>
                     <Form.Control.Feedback type="invalid">
                       {errors.student_name}
                     </Form.Control.Feedback>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-3 mb-3">
                   <div className="form-group">
@@ -2025,10 +2082,10 @@ const StudentManagement = () => {
 
               <div className="row mb-4">
                 <div className="col-md-6 mb-3">
-                  <div className="form-group">
-                    <label className="form-label text-muted mb-2">
+                  <Form.Group>
+                    <Form.Label className="form-label text-muted mb-2">
                       <i className="bi bi-gender-ambiguous me-2"></i>Gender *
-                    </label>
+                    </Form.Label>
                     <Form.Select
                       name="gender"
                       value={formData.gender}
@@ -2041,7 +2098,32 @@ const StudentManagement = () => {
                       <option value="Female">Female</option>
                       <option value="Other">Other</option>
                     </Form.Select>
-                  </div>
+                  </Form.Group>
+                </div>
+                <div className="col-md-6 mb-3">
+                  <Form.Group controlId="aadhaarNumber">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-credit-card-2-front me-2"></i>Aadhaar Number
+                    </Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="aadhaar"
+                      value={formData.aadhaar}
+                      onChange={handleInputChange}
+                      placeholder="Enter 12-digit Aadhaar number"
+                      maxLength={12}
+                      className="form-control-lg"
+                      isInvalid={!!errors.aadhaar}
+                    />
+                    <Form.Control.Feedback type="invalid">
+                      {errors.aadhaar}
+                    </Form.Control.Feedback>
+                    {existingAadhaarMasked && (
+                      <Form.Text className="text-muted">
+                        Current: {existingAadhaarMasked}. Leave blank to keep existing value.
+                      </Form.Text>
+                    )}
+                  </Form.Group>
                 </div>
               </div>
 
@@ -2055,28 +2137,30 @@ const StudentManagement = () => {
 
               <div className="row mb-4">
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="rollNumber">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-hash me-2"></i>Roll Number *
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="roll_number"
                       value={formData.roll_number}
                       onChange={handleInputChange}
-                      placeholder="Roll Number"
+                      placeholder="Enter roll number"
                       isInvalid={!!errors.roll_number}
                       maxLength={20}
                       className="form-control-lg"
-                      id="rollNumber"
                     />
-                    <label htmlFor="rollNumber" className="text-muted">
-                      <i className="bi bi-hash me-2"></i>Roll Number *
-                    </label>
                     <Form.Control.Feedback type="invalid">
                       {errors.roll_number}
                     </Form.Control.Feedback>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="admissionDate">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-calendar-event me-2"></i>Admission Date *
+                    </Form.Label>
                     <Form.Control
                       type="date"
                       name="admission_date"
@@ -2084,15 +2168,11 @@ const StudentManagement = () => {
                       onChange={handleInputChange}
                       isInvalid={!!errors.admission_date}
                       className="form-control-lg"
-                      id="admissionDate"
                     />
-                    <label htmlFor="admissionDate" className="text-muted">
-                      <i className="bi bi-calendar-event me-2"></i>Admission Date *
-                    </label>
                     <Form.Control.Feedback type="invalid">
                       {errors.admission_date}
                     </Form.Control.Feedback>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
                   <div className="form-group">
@@ -2155,38 +2235,36 @@ const StudentManagement = () => {
 
               <div className="row mb-4">
                 <div className="col-md-6 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="samSamagrahId">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-card-list me-2"></i>Sam Samagrah ID
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="sam_samagrah_id"
                       value={formData.sam_samagrah_id}
                       onChange={handleInputChange}
-                      placeholder="Sam Samagrah ID"
+                      placeholder="Enter Sam Samagrah ID"
                       maxLength={50}
                       className="form-control-lg"
-                      id="samSamagrahId"
                     />
-                    <label htmlFor="samSamagrahId" className="text-muted">
-                      <i className="bi bi-card-list me-2"></i>Sam Samagrah ID
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-6 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="aaparId">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-card-heading me-2"></i>AAPAR ID
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="aapar_id"
                       value={formData.aapar_id}
                       onChange={handleInputChange}
-                      placeholder="AAPAR ID"
+                      placeholder="Enter AAPAR ID"
                       maxLength={50}
                       className="form-control-lg"
-                      id="aaparId"
                     />
-                    <label htmlFor="aaparId" className="text-muted">
-                      <i className="bi bi-card-heading me-2"></i>AAPAR ID
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
               </div>
 
@@ -2200,39 +2278,37 @@ const StudentManagement = () => {
 
               <div className="row mb-4">
                 <div className="col-md-8 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="residentialAddress">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-house me-2"></i>Residential Address
+                    </Form.Label>
                     <Form.Control
                       as="textarea"
                       rows={3}
                       name="residential_address"
                       value={formData.residential_address}
                       onChange={handleInputChange}
-                      placeholder="Residential Address"
+                      placeholder="Enter residential address"
                       maxLength={500}
                       style={{ minHeight: '100px' }}
-                      id="residentialAddress"
                     />
-                    <label htmlFor="residentialAddress" className="text-muted">
-                      <i className="bi bi-house me-2"></i>Residential Address
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="pincode">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-mailbox me-2"></i>Pincode
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="pincode"
                       value={formData.pincode}
                       onChange={handleInputChange}
-                      placeholder="Pincode"
+                      placeholder="Enter pincode"
                       maxLength={10}
                       className="form-control-lg"
-                      id="pincode"
                     />
-                    <label htmlFor="pincode" className="text-muted">
-                      <i className="bi bi-mailbox me-2"></i>Pincode
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
               </div>
 
@@ -2246,58 +2322,57 @@ const StudentManagement = () => {
 
               <div className="row mb-4">
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="emergencyContactName">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-person me-2"></i>Emergency Contact Name
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="emergency_contact_name"
                       value={formData.emergency_contact_name}
                       onChange={handleInputChange}
-                      placeholder="Emergency Contact Name"
+                      placeholder="Enter emergency contact name"
                       maxLength={100}
                       className="form-control-lg"
-                      id="emergencyContactName"
                     />
-                    <label htmlFor="emergencyContactName" className="text-muted">
-                      <i className="bi bi-person me-2"></i>Emergency Contact Name
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="emergencyContactRelationship">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-people me-2"></i>Relationship
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="emergency_contact_relationship"
                       value={formData.emergency_contact_relationship}
                       onChange={handleInputChange}
-                      placeholder="Relationship"
+                      placeholder="Enter relationship"
                       maxLength={50}
                       className="form-control-lg"
-                      id="emergencyContactRelationship"
                     />
-                    <label htmlFor="emergencyContactRelationship" className="text-muted">
-                      <i className="bi bi-people me-2"></i>Relationship (e.g., Father, Mother, Guardian)
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="emergencyContact">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-phone me-2"></i>Contact
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="emergency_contact_number"
                       value={formData.emergency_contact_number}
                       onChange={handleInputChange}
-                      placeholder="Emergency Contact Number"
+                      placeholder="Enter emergency contact number"
                       maxLength={15}
                       pattern="[0-9]{10}"
                       className="form-control-lg"
-                      id="emergencyContact"
                     />
-                    <label htmlFor="emergencyContact" className="text-muted">
-                      <i className="bi bi-phone me-2"></i>Emergency Contact Number (10 digits)
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
               </div>
+
+              
 
               {/* Travel Mode Section */}
               <div className="section-header mb-4">
@@ -2425,22 +2500,21 @@ const StudentManagement = () => {
 
                       {/* Lifestyle Diseases */}
                       <div className="col-md-4">
-                        <div className="form-floating h-100">
+                        <Form.Group controlId="lifestyleDiseases" className="h-100 d-flex flex-column">
+                          <Form.Label className="form-label text-muted">
+                            <i className="bi bi-clipboard2-pulse me-2"></i>Lifestyle Diseases
+                          </Form.Label>
                           <Form.Control
                             as="textarea"
                             rows={3}
                             name="lifestyle_diseases"
                             value={formData.lifestyle_diseases}
                             onChange={handleInputChange}
-                            placeholder="Lifestyle Diseases"
+                            placeholder="List any lifestyle diseases"
                             maxLength={500}
                             style={{ minHeight: '120px' }}
-                            id="lifestyleDiseases"
                           />
-                          <label htmlFor="lifestyleDiseases" className="text-muted">
-                            <i className="bi bi-clipboard2-pulse me-2"></i>Lifestyle Diseases
-                          </label>
-                        </div>
+                        </Form.Group>
                       </div>
                     </div>
 
@@ -2492,56 +2566,53 @@ const StudentManagement = () => {
 
               <div className="row mb-4">
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="doctorName">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-person-vcard me-2"></i>Doctor Name
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="doctor_name"
                       value={formData.doctor_name}
                       onChange={handleInputChange}
-                      placeholder="Doctor Name"
+                      placeholder="Enter doctor name"
                       maxLength={100}
                       className="form-control-lg"
-                      id="doctorName"
                     />
-                    <label htmlFor="doctorName" className="text-muted">
-                      <i className="bi bi-person-vcard me-2"></i>Doctor Name
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="doctorContact">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-telephone me-2"></i>Doctor Contact
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       name="doctor_contact"
                       value={formData.doctor_contact}
                       onChange={handleInputChange}
-                      placeholder="Doctor Contact"
+                      placeholder="Enter doctor contact number"
                       maxLength={15}
                       className="form-control-lg"
-                      id="doctorContact"
                     />
-                    <label htmlFor="doctorContact" className="text-muted">
-                      <i className="bi bi-telephone me-2"></i>Doctor Contact
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
                 <div className="col-md-4 mb-3">
-                  <div className="form-floating">
+                  <Form.Group controlId="clinicAddress">
+                    <Form.Label className="form-label text-muted">
+                      <i className="bi bi-geo-alt me-2"></i>Clinic Address
+                    </Form.Label>
                     <Form.Control
                       as="textarea"
                       rows={2}
                       name="clinic_address"
                       value={formData.clinic_address}
                       onChange={handleInputChange}
-                      placeholder="Clinic Address"
+                      placeholder="Enter clinic address"
                       maxLength={500}
                       style={{ minHeight: '80px' }}
-                      id="clinicAddress"
                     />
-                    <label htmlFor="clinicAddress" className="text-muted">
-                      <i className="bi bi-geo-alt me-2"></i>Clinic Address
-                    </label>
-                  </div>
+                  </Form.Group>
                 </div>
               </div>
 
@@ -2721,19 +2792,19 @@ const StudentManagement = () => {
                 </div>
               </div>
 
-              {/* Student Aspirations Section */}
+              {/* Student Aspirations & Special Need Section */}
               {(user?.role === 'teacher' || user?.user_type === 'admin' || user?.role === 'admin') && (
                 <>
                   <div className="section-header mb-4">
                     <h6 className="text-primary mb-3">
-                      <i className="bi bi-lightbulb me-2"></i>Student Aspirations
+                      <i className="bi bi-lightbulb me-2"></i>Student Aspirations & Special Needs
                     </h6>
                     <hr className="section-divider" />
                   </div>
 
                   <div className="row mb-4">
-                    <div className="col-md-12 mb-3">
-                      <div className="form-floating">
+                    <div className="col-md-6 mb-3">
+                      <div className="form-floating h-100">
                         <Form.Control
                           as="textarea"
                           rows={3}
@@ -2748,11 +2819,32 @@ const StudentManagement = () => {
                         <label htmlFor="studentAspirations" className="text-muted">
                           <i className="bi bi-star me-2"></i>Student Aspirations
                         </label>
+                        <small className="text-muted">
+                          <i className="bi bi-info-circle me-1"></i>
+                          Share the student's aspirations, goals, and career interests
+                        </small>
                       </div>
-                      <small className="text-muted">
-                        <i className="bi bi-info-circle me-1"></i>
-                        Share the student's aspirations, goals, and career interests
-                      </small>
+                    </div>
+
+                    <div className="col-md-6 mb-3">
+                      <Form.Group controlId="specialNeed" className="h-100 d-flex flex-column">
+                        <Form.Label className="form-label text-muted">
+                          <i className="bi bi-universal-access me-2"></i>Special Need Details
+                        </Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={3}
+                          name="special_need"
+                          value={formData.special_need}
+                          onChange={handleInputChange}
+                          placeholder="Describe any special needs or accommodations"
+                          maxLength={500}
+                          style={{ minHeight: '120px' }}
+                        />
+                        <Form.Text className="text-muted mt-2">
+                          Leave blank if there are no special requirements for the student.
+                        </Form.Text>
+                      </Form.Group>
                     </div>
                   </div>
                 </>

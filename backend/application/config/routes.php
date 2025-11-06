@@ -23,6 +23,9 @@ $route['api/admin/students'] = 'api/Admin/students';
 $route['api/admin/students/(:num)'] = 'api/Admin/students/$1';
 $route['api/admin/parents'] = 'api/Admin/parents';
 $route['api/admin/parents/(:num)'] = 'api/Admin/parents/$1';
+$route['api/admin/parent_staff/(:num)'] = 'api/Admin/parent_staff/$1';
+$route['api/admin/parent_staff/contact/(:num)'] = 'api/Admin/parent_staff/contact/$1';
+$route['api/admin/parent_staff_bulk/(:num)'] = 'api/Admin/parent_staff_bulk/$1';
 $route['api/admin/staff'] = 'api/Admin/staff';
 $route['api/admin/staff/(:num)'] = 'api/Admin/staff/$1';
 $route['api/admin/staff_kids/(:num)'] = 'api/Admin/staff_kids/$1';
@@ -130,12 +133,17 @@ $route['api/admin/permissions'] = 'api/Admin/permissions';
 $route['api/admin/duplicate_role/(:num)'] = 'api/Admin/duplicate_role/$1';
 $route['api/admin/roles_dropdown'] = 'api/Admin/roles_dropdown';
 $route['api/admin/staff_dropdown'] = 'api/Admin/staff_dropdown';
+$route['api/admin/vision_statements'] = 'api/Admin/vision_statements';
+$route['api/admin/vision_statements/(:num)'] = 'api/Admin/vision_statements/$1';
 $route['api/staff/roles'] = 'api/Staff/admin_roles';
 $route['api/staff/roles/(:num)'] = 'api/Staff/admin_roles/$1';
 $route['api/staff/permissions'] = 'api/Staff/admin_permissions';
 $route['api/staff/duplicate_role/(:num)'] = 'api/Staff/admin_duplicate_role/$1';
 $route['api/staff/roles_dropdown'] = 'api/Staff/admin_roles_dropdown';
 $route['api/staff/staff_dropdown'] = 'api/Staff/admin_staff_dropdown';
+$route['api/staff/vision_statements'] = 'api/Staff/vision_statements';
+$route['api/staff/vision_statements/(:num)'] = 'api/Staff/vision_statements/$1';
+$route['api/staff/vision_statements_by_grade/(:num)'] = 'api/Staff/vision_statements_by_grade/$1';
 
 // Staff Wallet Routes
 $route['api/admin/staff-wallets'] = 'api/Admin/staff_wallets';

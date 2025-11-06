@@ -778,10 +778,78 @@ const StaffManagement = () => {
         doc.setLineWidth(0.4);
         doc.rect(5, 18, 20, 26);
         
-        doc.setFontSize(7);
-        doc.setTextColor(180, 180, 180);
-        doc.setFont('helvetica', 'normal');
-        doc.text('PHOTO', 15, 32, { align: 'center' });
+        // Load and add staff photo if available
+        if (staffMember.photo_url) {
+          try {
+            let imageDataUrl = null;
+            
+            // Use the serve_file endpoint which has CORS headers
+            try {
+              const imagePath = staffMember.photo_url.startsWith('/') ? staffMember.photo_url : `/${staffMember.photo_url}`;
+              const axiosResponse = await apiService.api.get(`/api/admin/serve_file?path=${encodeURIComponent(imagePath)}`, {
+                responseType: 'blob'
+              });
+              const blob = axiosResponse.data;
+              imageDataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch (serveError) {
+              console.warn('Serve file endpoint failed, trying direct path:', serveError);
+              // Fallback: try direct axios fetch
+              try {
+                const imagePath = staffMember.photo_url.startsWith('/') ? staffMember.photo_url.substring(1) : staffMember.photo_url;
+                const axiosResponse = await apiService.api.get(imagePath, {
+                  responseType: 'blob'
+                });
+                const blob = axiosResponse.data;
+                imageDataUrl = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch (axiosError) {
+                console.warn('Axios fetch also failed:', axiosError);
+              }
+            }
+            
+            if (imageDataUrl) {
+              try {
+                // Determine image format from filename or data URL
+                const isPNG = staffMember.photo_url.toLowerCase().includes('.png') ||
+                            imageDataUrl.substring(5, 15).toLowerCase().includes('png');
+                doc.addImage(imageDataUrl, isPNG ? 'PNG' : 'JPEG', 5.5, 18.5, 19, 25);
+              } catch (addImageError) {
+                console.error('Error adding staff photo to PDF:', addImageError);
+                doc.setFontSize(7);
+                doc.setTextColor(180, 180, 180);
+                doc.setFont('helvetica', 'normal');
+                doc.text('PHOTO', 15, 32, { align: 'center' });
+              }
+            } else {
+              // Failed to load image, show placeholder
+              doc.setFontSize(7);
+              doc.setTextColor(180, 180, 180);
+              doc.setFont('helvetica', 'normal');
+              doc.text('PHOTO', 15, 32, { align: 'center' });
+            }
+          } catch (error) {
+            console.error('Error loading staff photo:', error);
+            doc.setFontSize(7);
+            doc.setTextColor(180, 180, 180);
+            doc.setFont('helvetica', 'normal');
+            doc.text('PHOTO', 15, 32, { align: 'center' });
+          }
+        } else {
+          // No photo available, show placeholder
+          doc.setFontSize(7);
+          doc.setTextColor(180, 180, 180);
+          doc.setFont('helvetica', 'normal');
+          doc.text('PHOTO', 15, 32, { align: 'center' });
+        }
 
         // Staff details
         doc.setTextColor(0, 0, 0);

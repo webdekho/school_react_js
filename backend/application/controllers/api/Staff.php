@@ -670,10 +670,10 @@ class Staff extends API_Controller {
      * GET /api/staff/fee_collections
      */
     public function fee_collections() {
-        if ($this->input->method() !== 'get') {
-            $this->send_error('Method not allowed', 405);
-            return;
-        }
+        // if ($this->input->method() !== 'get') {
+        //     $this->send_error('Method not allowed', 405);
+        //     return;
+        // }
 
         try {
             // Check permission

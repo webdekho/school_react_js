@@ -144,6 +144,18 @@ class Role_model extends CI_Model {
                 'label' => 'Fees - Verify Collections',
                 'description' => 'Verify fee collections (Admin only)'
             ],
+            'fee_collections' => [
+                'label' => 'Fee Collections - Full Access',
+                'description' => 'Manage all fee collection records'
+            ],
+            'view_fee_collections' => [
+                'label' => 'Fee Collections - View',
+                'description' => 'View fee collection history and reports'
+            ],
+            'admin_fees' => [
+                'label' => 'Fees - Administrative Access',
+                'description' => 'Access administrative fee operations'
+            ],
             
             // Announcement Management
             'announcements' => [
@@ -225,6 +237,72 @@ class Role_model extends CI_Model {
                 'description' => 'Delete syllabus entries and subjects'
             ],
             
+            // Subject Management
+            'subjects' => [
+                'label' => 'Subjects - Full Access',
+                'description' => 'Create, read, update, delete subjects'
+            ],
+            'subjects.view' => [
+                'label' => 'Subjects - View Only',
+                'description' => 'View subject information'
+            ],
+            'subjects.create' => [
+                'label' => 'Subjects - Create',
+                'description' => 'Add new subjects'
+            ],
+            'subjects.update' => [
+                'label' => 'Subjects - Update',
+                'description' => 'Edit subject information'
+            ],
+            'subjects.delete' => [
+                'label' => 'Subjects - Delete',
+                'description' => 'Remove subjects'
+            ],
+            
+            // Student Attendance Management
+            'attendance' => [
+                'label' => 'Student Attendance - Full Access',
+                'description' => 'Create, read, update, delete student attendance records'
+            ],
+            'attendance.view' => [
+                'label' => 'Student Attendance - View Only',
+                'description' => 'View student attendance records'
+            ],
+            'attendance.create' => [
+                'label' => 'Student Attendance - Create',
+                'description' => 'Record student attendance entries'
+            ],
+            'attendance.update' => [
+                'label' => 'Student Attendance - Update',
+                'description' => 'Modify student attendance entries'
+            ],
+            'attendance.delete' => [
+                'label' => 'Student Attendance - Delete',
+                'description' => 'Delete student attendance entries'
+            ],
+            
+            // Staff Attendance Management
+            'staff_attendance' => [
+                'label' => 'Staff Attendance - Full Access',
+                'description' => 'Create, read, update, delete staff attendance records'
+            ],
+            'staff_attendance.view' => [
+                'label' => 'Staff Attendance - View Only',
+                'description' => 'View staff attendance records'
+            ],
+            'staff_attendance.create' => [
+                'label' => 'Staff Attendance - Create',
+                'description' => 'Record staff attendance entries'
+            ],
+            'staff_attendance.update' => [
+                'label' => 'Staff Attendance - Update',
+                'description' => 'Modify staff attendance entries'
+            ],
+            'staff_attendance.delete' => [
+                'label' => 'Staff Attendance - Delete',
+                'description' => 'Delete staff attendance entries'
+            ],
+            
             // Vision Statements Management
             'vision_statements' => [
                 'label' => 'Vision Statements - Full Access',
@@ -272,15 +350,18 @@ class Role_model extends CI_Model {
         return [
             'General' => ['dashboard', 'search'],
             'Academic Management' => ['academic_years', 'academic_years.view', 'grades', 'grades.view', 'divisions', 'divisions.view',
-                                      'syllabus', 'syllabus.view', 'syllabus.create', 'syllabus.update', 'syllabus.delete',
-                                      'vision_statements', 'vision_statements.view', 'vision_statements.create', 'vision_statements.update', 'vision_statements.delete'],
+                                      'syllabus', 'syllabus.view', 'syllabus.create', 'syllabus.update', 'syllabus.delete'],
+            'Subject' => ['subjects', 'subjects.view', 'subjects.create', 'subjects.update', 'subjects.delete'],
             'User Management' => ['students', 'students.view', 'students.create', 'students.update', 'students.delete',
                                 'parents', 'parents.view', 'parents.create', 'parents.update', 'parents.delete',
                                 'staff', 'staff.view', 'staff.create', 'staff.update', 'staff.delete'],
             'Role & Permissions' => ['roles', 'roles.view'],
-            'Fee Management' => ['fees', 'fees.view', 'fees.collect', 'fees.structure', 'fees.verify'],
+            'Fee Management' => ['fees', 'fees.view', 'fees.collect', 'fees.structure', 'fees.verify', 'fee_collections', 'view_fee_collections', 'admin_fees'],
             'Communication' => ['announcements', 'announcements.view', 'announcements.create', 'announcements.send',
                               'complaints', 'complaints.view', 'complaints.create', 'complaints.assign', 'complaints.resolve'],
+            'Student Attendance' => ['attendance', 'attendance.view', 'attendance.create', 'attendance.update', 'attendance.delete'],
+            'Staff Attendance' => ['staff_attendance', 'staff_attendance.view', 'staff_attendance.create', 'staff_attendance.update', 'staff_attendance.delete'],
+            'Vision Statements' => ['vision_statements', 'vision_statements.view', 'vision_statements.create', 'vision_statements.update', 'vision_statements.delete'],
             'Reports & Analytics' => ['reports', 'reports.students', 'reports.fees', 'reports.export'],
             'System' => ['settings', 'audit_logs']
         ];

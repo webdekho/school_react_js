@@ -232,4 +232,34 @@ class Vision_statement_model extends CI_Model {
         $query = $this->db->get();
         return $query->result_array();
     }
+
+    /**
+     * Alias for getting a single vision statement by ID (used by legacy controllers)
+     */
+    public function get_by_id($id) {
+        return $this->get_vision_statement_by_id($id);
+    }
+
+    /**
+     * Alias for paginated fetch used by legacy controllers
+     */
+    public function get_all($limit = 10, $offset = 0, $filters = []) {
+        return $this->get_vision_statements_paginated($limit, $offset, $filters);
+    }
+
+    /**
+     * Check whether a staff member can edit a given vision statement
+     */
+    public function can_edit($id, $staff_id) {
+        $this->db->select('staff_id');
+        $this->db->from($this->table);
+        $this->db->where('id', $id);
+        $vision = $this->db->get()->row_array();
+
+        if (!$vision) {
+            return false;
+        }
+
+        return (int) $vision['staff_id'] === (int) $staff_id;
+    }
 }
